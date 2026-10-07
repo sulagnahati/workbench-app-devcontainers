@@ -1,0 +1,8 @@
+{
+  "id": "bq-dashboard",
+  "version": "1.0.0",
+  "name": "BigQuery Dashboard",
+  "description": "Flask + Plotly dashboard over one or more BigQuery tables (Port: 8080)",
+  "options": {},
+  "platforms": ["Any"]
+}

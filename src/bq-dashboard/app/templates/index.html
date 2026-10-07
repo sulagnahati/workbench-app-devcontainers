@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BigQuery Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px; }
+        .grid .card { margin: 0; }
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .error { color: #d32f2f; padding: 20px; background: #ffebee; border-radius: 4px; }
+        .filters label { margin-right: 16px; display: inline-block; margin-bottom: 8px; }
+        .kpi { font-size: 2em; font-weight: bold; color: #1976d2; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background: #f0f0f0; position: sticky; top: 0; }
+        .scroll { max-height: 400px; overflow: auto; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>BigQuery Dashboard</h1>
+
+    <div class="card">
+        <label>Table: <select id="table-select"></select></label>
+        <div style="margin-top:12px">Matching rows: <span id="row-count" class="kpi">-</span></div>
+        <div id="filters" class="filters" style="margin-top:12px"></div>
+    </div>
+
+    <div id="charts" class="grid"></div>
+
+    <div class="card">
+        <h3>Data preview (first 50 rows, identifiers hidden)</h3>
+        <div id="table-content" class="scroll loading">Loading...</div>
+    </div>
+</div>
+
+<script>
+// All requests use relative paths (no leading slash) so they work behind the Workbench proxy.
+let currentTable = null;
+let schema = [];
+const CHART_COLUMNS_MAX = 6;
+
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function getJSON(path, params) {
+    const res = await fetch(`${path}?${params}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+}
+
+function baseParams() {
+    const p = new URLSearchParams({ table: currentTable });
+    document.querySelectorAll('select[data-filter]').forEach(s => {
+        if (s.value) p.append('filter', `${s.dataset.filter}:${s.value}`);
+    });
+    return p;
+}
+
+async function loadTables() {
+    const tables = await getJSON('api/tables', '');
+    const sel = document.getElementById('table-select');
+    sel.innerHTML = tables.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+    sel.onchange = () => selectTable(sel.value);
+    if (tables.length) await selectTable(tables[0]);
+}
+
+async function selectTable(table) {
+    currentTable = table;
+    document.getElementById('filters').innerHTML = '<span class="loading">Loading filters...</span>';
+    try {
+        schema = await getJSON('api/schema', new URLSearchParams({ table }));
+        const filters = await getJSON('api/filters', new URLSearchParams({ table }));
+        const box = document.getElementById('filters');
+        box.innerHTML = '';
+        for (const [col, values] of Object.entries(filters)) {
+            const label = document.createElement('label');
+            label.textContent = col + ': ';
+            const sel = document.createElement('select');
+            sel.dataset.filter = col;
+            sel.innerHTML = '<option value="">All</option>' +
+                values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+            sel.onchange = refresh;
+            label.appendChild(sel);
+            box.appendChild(label);
+        }
+    } catch (e) {
+        document.getElementById('filters').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+        return;
+    }
+    refresh();
+}
+
+function chartCard(id, title) {
+    return `<div class="card"><h3>${esc(title)}</h3><div id="${id}" class="loading">Loading...</div></div>`;
+}
+
+async function draw(id, fn) {
+    const el = document.getElementById(id);
+    try {
+        await fn(el);
+    } catch (e) {
+        el.className = 'error';
+        el.textContent = e.message;
+    }
+}
+
+function refresh() {
+    const params = baseParams();
+
+    draw('row-count', async el => {
+        el.className = 'kpi';
+        const s = await getJSON('api/summary', params);
+        el.textContent = s.row_count.toLocaleString();
+    });
+
+    // One chart per low-cardinality category column, per numeric column, per time column
+    const cats = schema.filter(f => f.kind === 'category' && !['id','pendo_visitor_id','identifier_system_value_list','group_id_list'].includes(f.name)).slice(0, CHART_COLUMNS_MAX);
+    const nums = schema.filter(f => f.kind === 'numeric').slice(0, 2);
+    const times = schema.filter(f => f.kind === 'time').slice(0, 2);
+
+    const charts = document.getElementById('charts');
+    charts.innerHTML = '';
+    const specs = [
+        ...cats.map(f => ({ id: `c-cat-${f.name}`, title: `Rows by ${f.name}`, kind: 'cat', col: f.name })),
+        ...nums.map(f => ({ id: `c-num-${f.name}`, title: `Distribution of ${f.name}`, kind: 'num', col: f.name })),
+        ...times.map(f => ({ id: `c-time-${f.name}`, title: `Rows per month by ${f.name}`, kind: 'time', col: f.name })),
+    ];
+    charts.innerHTML = specs.map(s => chartCard(s.id, s.title)).join('');
+
+    for (const s of specs) {
+        const p = new URLSearchParams(params);
+        p.set('column', s.col);
+        draw(s.id, async el => {
+            if (s.kind === 'cat') {
+                const rows = await getJSON('api/breakdown', p);
+                el.className = ''; el.innerHTML = '';
+                Plotly.newPlot(el, [{ type: 'bar', x: rows.map(r => r.label ?? '(null)'), y: rows.map(r => r.n), marker: { color: '#1976d2' } }],
+                    { margin: { t: 10 }, yaxis: { title: 'Rows' } }, { responsive: true });
+            } else if (s.kind === 'num') {
+                const rows = await getJSON('api/histogram', p);
+                el.className = ''; el.innerHTML = '';
+                Plotly.newPlot(el, [{ type: 'bar', x: rows.map(r => r.x), y: rows.map(r => r.n), marker: { color: '#388e3c' } }],
+                    { margin: { t: 10 }, xaxis: { title: s.col }, yaxis: { title: 'Rows' } }, { responsive: true });
+            } else {
+                const rows = await getJSON('api/timeseries', p);
+                el.className = ''; el.innerHTML = '';
+                Plotly.newPlot(el, [{ type: 'scatter', mode: 'lines', x: rows.map(r => r.month), y: rows.map(r => r.n), line: { color: '#f57c00' } }],
+                    { margin: { t: 10 }, yaxis: { title: 'Rows' } }, { responsive: true });
+            }
+        });
+    }
+
+    draw('table-content', async el => {
+        const data = await getJSON('api/preview', params);
+        el.className = 'scroll';
+        el.innerHTML = '<table><thead><tr>' + data.columns.map(c => `<th>${esc(c)}</th>`).join('') +
+            '</tr></thead><tbody>' +
+            data.rows.map(r => '<tr>' + data.columns.map(c => `<td>${esc(r[c])}</td>`).join('') + '</tr>').join('') +
+            '</tbody></table>';
+    });
+}
+
+loadTables().catch(e => {
+    document.querySelector('.container').insertAdjacentHTML('beforeend', `<div class="error">${esc(e.message)}</div>`);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      # Comma-separated list of project.dataset.table to expose in the dashboard
+      BQ_TABLES: "prj-d-1v-ucd.gold_verily_me.patient_gold_latest_verily_me"
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true
