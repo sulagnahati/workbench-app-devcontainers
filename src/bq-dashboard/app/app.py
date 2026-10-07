@@ -7,6 +7,8 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from google.cloud import bigquery
 
+import lookml_engine
+
 app = Flask(__name__)
 app.config["STRICT_SLASHES"] = False  # Prevents 308 redirects behind the proxy
 CORS(app)
@@ -196,11 +198,62 @@ def api_preview():
     return jsonify({"columns": cols, "rows": rows})
 
 
+# ---- LookML-driven explorer -------------------------------------------------
+
+_view = None
+
+
+def lookml_view():
+    global _view
+    if _view is None:
+        _view = lookml_engine.load_view()
+    return _view
+
+
+def lookml_params(params):
+    return [bigquery.ScalarQueryParameter(k, "STRING", v) for k, v in params.items()]
+
+
+@app.route("/lookml")
+def lookml_page():
+    return render_template("lookml.html")
+
+
+@app.route("/api/lookml/fields")
+def api_lookml_fields():
+    return jsonify(lookml_view().describe())
+
+
+@app.route("/api/lookml/values")
+def api_lookml_values():
+    view = lookml_view()
+    dim = request.args.get("dimension", "")
+    sql = view.distinct_values_sql(dim)
+    rows = cached(("lookml-values", dim), lambda: run(sql))
+    return jsonify([r["v"] for r in rows if r["v"] is not None])
+
+
+@app.route("/api/lookml/query")
+def api_lookml_query():
+    view = lookml_view()
+    filters = []
+    for item in request.args.getlist("filter"):
+        dim, _, value = item.partition(":")
+        filters.append((dim, value))
+    sql, params = view.compile(
+        request.args.get("measure", ""), request.args.get("dimension") or None, filters
+    )
+    rows = run(sql, lookml_params(params))
+    for r in rows:
+        r["measure_value"] = int(r["measure_value"]) if r["measure_value"] is not None else None
+    return jsonify({"sql": sql, "params": params, "rows": rows})
+
+
 @app.errorhandler(Exception)
 def handle_error(e):
     if isinstance(e, HTTPException):
         return jsonify({"error": e.description}), e.code
-    code = 400 if isinstance(e, ValueError) else 500
+    code = 400 if isinstance(e, (ValueError, lookml_engine.Unsupported)) else 500
     return jsonify({"error": str(e)}), code
 
 

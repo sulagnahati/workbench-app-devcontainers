@@ -1,0 +1,2 @@
+# LookML comes from the internal analytics-internal-looker repo; do not commit it.
+app/lookml/*.lkml

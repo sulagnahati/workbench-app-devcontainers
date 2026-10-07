@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LookML Explorer</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .error { color: #d32f2f; padding: 12px; background: #ffebee; border-radius: 4px; }
+        label { margin-right: 16px; display: inline-block; margin-bottom: 8px; }
+        pre { background: #263238; color: #eceff1; padding: 12px; border-radius: 4px; overflow: auto; font-size: 12px; }
+        .muted { color: #666; font-size: 13px; }
+        table { border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+        th { background: #f0f0f0; }
+        details { margin-top: 8px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>LookML Explorer</h1>
+    <p class="muted">Measures and dimensions below are read from the LookML view
+        <strong id="view-name">...</strong>; the SQL is generated from those definitions.
+        <a href="./">Back to table dashboard</a></p>
+
+    <div class="card">
+        <label>Measure: <select id="measure"></select></label>
+        <label>Group by: <select id="dimension"></select></label>
+        <div id="filters" style="margin-top:8px"></div>
+        <div id="description" class="muted"></div>
+    </div>
+
+    <div class="card">
+        <div id="chart">Loading...</div>
+        <details><summary>Generated SQL</summary><pre id="sql"></pre></details>
+    </div>
+
+    <div class="card">
+        <details>
+            <summary id="unsupported-summary">Fields not yet supported</summary>
+            <table id="unsupported"></table>
+        </details>
+    </div>
+</div>
+
+<script>
+// Relative paths only (no leading slash) so requests work behind the Workbench proxy.
+let fields = null;
+const FILTER_DIMS = ['birth_sex', 'is_active', 'verily_me_account_status', 'enrolled_type', 'cohort_eligibility', 'organization_compartment_name', 'state'];
+
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function getJSON(path, params) {
+    const res = await fetch(`${path}?${params || ''}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+}
+
+async function init() {
+    fields = await getJSON('api/lookml/fields');
+    document.getElementById('view-name').textContent = fields.view;
+    const mSel = document.getElementById('measure');
+    mSel.innerHTML = fields.measures.map(m => `<option value="${esc(m.name)}">${esc(m.label)}</option>`).join('');
+    const dSel = document.getElementById('dimension');
+    dSel.innerHTML = '<option value="">(total)</option>' +
+        fields.dimensions.map(d => `<option value="${esc(d.name)}">${esc(d.group ? d.group + ' - ' : '')}${esc(d.label)}</option>`).join('');
+    mSel.onchange = dSel.onchange = run;
+    dSel.value = 'organization_compartment_name' in Object.fromEntries(fields.dimensions.map(d => [d.name, 1])) ? 'organization_compartment_name' : '';
+
+    const box = document.getElementById('filters');
+    for (const dim of FILTER_DIMS.filter(n => fields.dimensions.some(d => d.name === n))) {
+        const sel = document.createElement('select');
+        sel.dataset.filter = dim;
+        sel.innerHTML = '<option value="">All</option>';
+        sel.onchange = run;
+        const label = document.createElement('label');
+        label.textContent = dim + ': ';
+        label.appendChild(sel);
+        box.appendChild(label);
+        getJSON('api/lookml/values', new URLSearchParams({ dimension: dim }))
+            .then(vals => { sel.innerHTML += vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join(''); })
+            .catch(() => {});
+    }
+
+    const rows = fields.unsupported;
+    document.getElementById('unsupported-summary').textContent =
+        `Fields not yet supported (${rows.length}) - these need joins to other views or Liquid parameters`;
+    document.getElementById('unsupported').innerHTML = '<tr><th>Field</th><th>Kind</th><th>Reason</th></tr>' +
+        rows.map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.kind)}</td><td>${esc(r.reason)}</td></tr>`).join('');
+    run();
+}
+
+async function run() {
+    const measure = document.getElementById('measure').value;
+    const dimension = document.getElementById('dimension').value;
+    const m = fields.measures.find(x => x.name === measure);
+    document.getElementById('description').textContent = m ? m.description : '';
+    const p = new URLSearchParams({ measure, dimension });
+    document.querySelectorAll('select[data-filter]').forEach(s => { if (s.value) p.append('filter', `${s.dataset.filter}:${s.value}`); });
+    const chart = document.getElementById('chart');
+    try {
+        const data = await getJSON('api/lookml/query', p);
+        document.getElementById('sql').textContent = data.sql + (Object.keys(data.params).length ? '\n\n-- params: ' + JSON.stringify(data.params) : '');
+        chart.innerHTML = '';
+        if (!dimension) {
+            chart.innerHTML = `<div style="font-size:2.5em;font-weight:bold;color:#1976d2">${(data.rows[0]?.measure_value ?? 0).toLocaleString()}</div><div class="muted">${esc(m.label)}</div>`;
+            return;
+        }
+        const isTime = fields.dimensions.find(d => d.name === dimension)?.type === 'time';
+        Plotly.newPlot(chart, [{
+            type: isTime ? 'scatter' : 'bar', mode: 'lines',
+            x: data.rows.map(r => r.dimension_value ?? '(null)'), y: data.rows.map(r => r.measure_value),
+            marker: { color: '#1976d2' },
+        }], { margin: { t: 10 }, xaxis: { title: dimension }, yaxis: { title: m.label } }, { responsive: true });
+    } catch (e) {
+        chart.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    }
+}
+
+init().catch(e => { document.getElementById('chart').innerHTML = `<div class="error">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
