@@ -8,7 +8,7 @@ services:
     restart: always
     environment:
       # Comma-separated list of project.dataset.table to expose in the dashboard
-      BQ_TABLES: "prj-d-1v-ucd.gold_verily_me.patient_gold_latest_verily_me"
+      BQ_TABLES: "prj-p-1v-s0i.gold_basevalue_lifelong.patient_gold_latest_bv_ll"
     ports:
       - 8080:8080
     networks:
