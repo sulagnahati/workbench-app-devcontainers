@@ -1,3 +1,6 @@
+import datetime
+import decimal
+import json
 import os
 import threading
 import time
@@ -7,6 +10,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from google.cloud import bigquery
 
+import lifelong_dashboard
 import lookml_engine
 
 app = Flask(__name__)
@@ -198,20 +202,39 @@ def api_preview():
     return jsonify({"columns": cols, "rows": rows})
 
 
-# ---- LookML-driven explorer -------------------------------------------------
+# ---- LookML-driven explorer and dashboard -----------------------------------
 
-_view = None
+_lookml = {}
 
 
-def lookml_view():
-    global _view
-    if _view is None:
-        _view = lookml_engine.load_view()
-    return _view
+def lookml_project():
+    if "project" not in _lookml:
+        _lookml["project"] = lookml_engine.project_from_env()
+    return _lookml["project"]
+
+
+def lookml_explorer():
+    if "explorer" not in _lookml:
+        _lookml["explorer"] = lookml_engine.Explorer(lookml_project())
+    return _lookml["explorer"]
+
+
+def lifelong():
+    if "dashboard" not in _lookml:
+        _lookml["dashboard"] = lifelong_dashboard.Dashboard(lookml_project())
+    return _lookml["dashboard"]
 
 
 def lookml_params(params):
     return [bigquery.ScalarQueryParameter(k, "STRING", v) for k, v in params.items()]
+
+
+def jsonable(v):
+    if isinstance(v, (datetime.date, datetime.datetime)):
+        return v.isoformat()
+    if isinstance(v, decimal.Decimal):
+        return float(v)
+    return v
 
 
 @app.route("/lookml")
@@ -219,34 +242,60 @@ def lookml_page():
     return render_template("lookml.html")
 
 
+@app.route("/lifelong")
+def lifelong_page():
+    return render_template("lifelong.html")
+
+
 @app.route("/api/lookml/fields")
 def api_lookml_fields():
-    return jsonify(lookml_view().describe())
+    return jsonify(lookml_explorer().describe())
 
 
 @app.route("/api/lookml/values")
 def api_lookml_values():
-    view = lookml_view()
-    dim = request.args.get("dimension", "")
-    sql = view.distinct_values_sql(dim)
-    rows = cached(("lookml-values", dim), lambda: run(sql))
+    sql = lookml_explorer().distinct_values_sql(request.args.get("dimension", ""))
+    rows = cached(("lookml-values", sql), lambda: run(sql))
     return jsonify([r["v"] for r in rows if r["v"] is not None])
 
 
 @app.route("/api/lookml/query")
 def api_lookml_query():
-    view = lookml_view()
     filters = []
     for item in request.args.getlist("filter"):
         dim, _, value = item.partition(":")
         filters.append((dim, value))
-    sql, params = view.compile(
+    sql, params = lookml_explorer().compile(
         request.args.get("measure", ""), request.args.get("dimension") or None, filters
     )
     rows = run(sql, lookml_params(params))
     for r in rows:
-        r["measure_value"] = int(r["measure_value"]) if r["measure_value"] is not None else None
+        r["measure_value"] = jsonable(r["measure_value"])
     return jsonify({"sql": sql, "params": params, "rows": rows})
+
+
+@app.route("/api/lifelong/config")
+def api_lifelong_config():
+    return jsonify(lifelong().config())
+
+
+@app.route("/api/lifelong/tile")
+def api_lifelong_tile():
+    tile_id = int(request.args.get("id", "-1"))
+    values = json.loads(request.args.get("filters", "{}"))
+    if not 0 <= tile_id < len(lifelong().tiles):
+        raise ValueError("Unknown tile")
+    kind, columns, sql, params = lifelong().tile_query(tile_id, values)
+    rows = cached(("tile", sql, tuple(sorted(params.items()))), lambda: run(sql, lookml_params(params)))
+    if kind == "single_value":
+        value = jsonable(rows[0]["m0"]) if rows else None
+        return jsonify({"type": kind, "label": columns[0], "value": value, "sql": sql})
+    if kind == "donut":
+        row = rows[0] if rows else {}
+        slices = [{"label": col, "value": jsonable(row.get(f"m{i}")) or 0} for i, col in enumerate(columns)]
+        return jsonify({"type": kind, "slices": slices, "sql": sql})
+    points = [{"x": r["d"], "y": jsonable(r["m0"])} for r in rows if r["d"] is not None]
+    return jsonify({"type": kind, "label": columns[0], "points": points, "sql": sql})
 
 
 @app.errorhandler(Exception)

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lifelong Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        .card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .filters { margin: 16px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+        .filters label { display: flex; flex-direction: column; font-size: 12px; color: #555; }
+        .filters input, .filters select { padding: 6px; min-width: 220px; }
+        button { padding: 8px 16px; background: #1976d2; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .grid .wide { grid-column: span 2; }
+        h3 { margin: 0 0 8px 0; font-size: 14px; color: #444; }
+        .kpi { font-size: 2.4em; font-weight: bold; color: #1976d2; min-height: 60px; }
+        .loading { color: #888; }
+        .error { color: #d32f2f; font-size: 13px; background: #ffebee; padding: 8px; border-radius: 4px; }
+        pre { background: #263238; color: #eceff1; padding: 8px; border-radius: 4px; overflow: auto; font-size: 11px; max-height: 260px; }
+        details { margin-top: 6px; font-size: 12px; }
+        .muted { color: #666; font-size: 13px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1 id="title">Lifelong Dashboard</h1>
+    <p class="muted">Proof of concept rebuilt from the Looker dashboard's LookML: tiles, filters and measures
+        are read from the LookML files and compiled to BigQuery SQL.
+        <a href="./">Table dashboard</a> | <a href="lookml">LookML explorer</a></p>
+
+    <div class="card filters" id="filters"></div>
+    <div class="grid" id="tiles"></div>
+</div>
+
+<script>
+// Relative paths only (no leading slash) so requests work behind the Workbench proxy.
+let config = null;
+let runId = 0;
+
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function getJSON(path, params) {
+    const res = await fetch(`${path}?${params || ''}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+}
+
+function currentFilters() {
+    const out = {};
+    document.querySelectorAll('[data-filter]').forEach(el => { out[el.dataset.filter] = el.value.trim(); });
+    return out;
+}
+
+async function init() {
+    config = await getJSON('api/lifelong/config');
+    document.getElementById('title').textContent = config.title || 'Lifelong Dashboard';
+    const box = document.getElementById('filters');
+    for (const f of config.filters) {
+        const label = document.createElement('label');
+        label.textContent = f.name;
+        let input;
+        if (f.field.endsWith('global_time_grain_selector')) {
+            input = document.createElement('select');
+            input.innerHTML = ['date', 'week', 'month', 'quarter'].map(v => `<option value="${v}">${v}</option>`).join('');
+        } else {
+            input = document.createElement('input');
+        }
+        input.value = f.default;
+        input.dataset.filter = f.name;
+        label.appendChild(input);
+        box.appendChild(label);
+    }
+    const btn = document.createElement('button');
+    btn.textContent = 'Update';
+    btn.onclick = refresh;
+    box.appendChild(btn);
+
+    const tiles = [...config.tiles].sort((a, b) => a.row - b.row || a.col - b.col);
+    document.getElementById('tiles').innerHTML = tiles.map(t =>
+        `<div class="card ${t.type === 'donut' || t.type === 'line' ? 'wide' : ''}">
+            <h3>${esc(t.title)}</h3><div id="tile-${t.id}" class="loading">Loading...</div>
+            <details><summary>SQL</summary><pre id="sql-${t.id}"></pre></details></div>`).join('');
+    refresh();
+}
+
+function refresh() {
+    const filters = JSON.stringify(currentFilters());
+    const my = ++runId;
+    for (const t of config.tiles) drawTile(t, filters, my);
+}
+
+async function drawTile(t, filters, my) {
+    const el = document.getElementById(`tile-${t.id}`);
+    el.className = 'loading';
+    el.textContent = 'Loading...';
+    try {
+        const data = await getJSON('api/lifelong/tile', new URLSearchParams({ id: t.id, filters }));
+        if (my !== runId) return;
+        document.getElementById(`sql-${t.id}`).textContent = data.sql;
+        el.className = '';
+        el.innerHTML = '';
+        if (data.type === 'single_value') {
+            el.className = 'kpi';
+            el.textContent = data.value === null ? '-' : Number(data.value).toLocaleString();
+        } else if (data.type === 'donut') {
+            Plotly.newPlot(el, [{ type: 'pie', hole: 0.5, labels: data.slices.map(s => s.label), values: data.slices.map(s => s.value) }],
+                { margin: { t: 10, b: 10 }, height: 260 }, { responsive: true });
+        } else {
+            Plotly.newPlot(el, [{ type: 'scatter', mode: 'lines', x: data.points.map(p => p.x), y: data.points.map(p => p.y), line: { color: '#1976d2' } }],
+                { margin: { t: 10 }, height: 260, yaxis: { title: data.label } }, { responsive: true });
+        }
+    } catch (e) {
+        if (my !== runId) return;
+        el.className = 'error';
+        el.textContent = e.message;
+    }
+}
+
+init().catch(e => { document.getElementById('tiles').innerHTML = `<div class="error">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
