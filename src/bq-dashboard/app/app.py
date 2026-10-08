@@ -11,6 +11,7 @@ from flask_cors import CORS
 from google.cloud import bigquery
 
 import lifelong_dashboard
+import overview
 import lookml_engine
 
 app = Flask(__name__)
@@ -272,6 +273,57 @@ def api_lookml_query():
     for r in rows:
         r["measure_value"] = jsonable(r["measure_value"])
     return jsonify({"sql": sql, "params": params, "rows": rows})
+
+
+# ---- Dashboard built from a metrics file (no LookML) -----------------------------
+
+def member_overview():
+    if "overview" not in _lookml:
+        table = os.environ.get("BQ_TABLES", "").split(",")[0].strip()
+        _lookml["overview"] = overview.Overview(table)
+    return _lookml["overview"]
+
+
+def overview_filters():
+    out = []
+    for item in request.args.getlist("filter"):
+        dim, _, value = item.partition(":")
+        out.append((dim, value))
+    return out
+
+
+def overview_run(sql, params):
+    key = ("overview", sql, tuple(sorted(params.items())))
+    return cached(key, lambda: run(sql, lookml_params(params)))
+
+
+@app.route("/overview")
+def overview_page():
+    return render_template("overview.html")
+
+
+@app.route("/api/overview/config")
+def api_overview_config():
+    return jsonify(member_overview().config())
+
+
+@app.route("/api/overview/kpis")
+def api_overview_kpis():
+    ov = member_overview()
+    sql, params = ov.kpis(overview_filters())
+    row = overview_run(sql, params)[0]
+    suppressed = (row["_n"] or 0) < ov.min_size
+    values = {k: (None if suppressed else jsonable(row[k])) for k in ov.dash["kpis"]}
+    return jsonify({"values": values, "suppressed": suppressed, "sql": sql})
+
+
+@app.route("/api/overview/grouped")
+def api_overview_grouped():
+    ov = member_overview()
+    measures = [m for m in request.args.get("measures", "").split(",") if m]
+    sql, params = ov.grouped(request.args.get("dimension", ""), measures, overview_filters())
+    rows = overview_run(sql, params)
+    return jsonify({"rows": [{k: jsonable(v) for k, v in r.items()} for r in rows], "sql": sql})
 
 
 @app.route("/api/lifelong/config")

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Member Overview</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <style>
+        :root { --blue: #2563eb; --green: #10b981; --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --bg: #f1f5f9; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--ink); }
+        .container { max-width: 1240px; margin: 0 auto; padding: 28px 24px 48px; }
+        header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.02em; }
+        header p { margin: 0; color: var(--muted); font-size: 14px; }
+        nav { margin-top: 10px; font-size: 13px; }
+        nav a { color: var(--blue); text-decoration: none; margin-right: 14px; }
+        .card { background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.04); }
+        .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 16px; }
+        .kpi .label { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+        .kpi .value { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; margin-top: 6px; }
+        .kpi .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .kpi:nth-child(1) .value { color: var(--blue); }
+        .kpi:nth-child(2) .value { color: var(--green); }
+        .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 34px; margin-bottom: 14px; font-size: 13px; }
+        .chip { background: #dbeafe; color: #1e40af; border-radius: 999px; padding: 5px 6px 5px 12px; display: inline-flex; gap: 6px; align-items: center; }
+        .chip button { border: 0; background: rgba(30,64,175,.15); color: #1e40af; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
+        .linkbtn { border: 0; background: none; color: var(--blue); cursor: pointer; font-size: 13px; }
+        .hintline { color: var(--muted); }
+        .row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+        .two { grid-template-columns: 3fr 2fr; }
+        h2 { font-size: 16px; margin: 0 0 2px; }
+        .sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+        .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
+        select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 14px; }
+        .chart { width: 100%; height: 340px; }
+        .chart.tall { height: 420px; }
+        .error { color: #b91c1c; background: #fee2e2; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+        details { margin-top: 8px; font-size: 13px; color: var(--muted); }
+        details li { margin: 4px 0; }
+        pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
+        @media (max-width: 900px) { .kpis, .two { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1 id="title">Member Overview</h1>
+        <p id="description"></p>
+        <nav><a href="./">Table dashboard</a><a href="lifelong">Lifelong dashboard</a><a href="lookml">LookML explorer</a></nav>
+    </header>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="chips" id="chips"></div>
+
+    <div class="row">
+        <div class="card">
+            <h2>Sign-ups over time</h2>
+            <div class="sub">New members each month, and how many of them are active today. Drag the slider below to zoom.</div>
+            <div id="trend" class="chart"></div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+        <div class="controls">
+            <h2 style="margin:0">Break down by</h2>
+            <select id="dimension"></select>
+            <span class="hintline" id="drillhint"></span>
+        </div>
+        <div class="sub">Click a bar to filter the whole dashboard to that value and drill into the next level.</div>
+    </div>
+
+    <div class="row two">
+        <div class="card"><h2>Members</h2><div class="sub">Total and active members</div><div id="breakdown" class="chart tall"></div></div>
+        <div class="card"><h2>Active share</h2><div class="sub">Share of members who are active</div><div id="share" class="chart tall"></div></div>
+    </div>
+
+    <div class="card">
+        <h2>Questions this dashboard answers</h2>
+        <details open><summary>Show</summary><ul id="questions"></ul></details>
+        <details><summary>Query behind the last refresh</summary><pre id="sql"></pre></details>
+        <div class="sub" id="privacy"></div>
+    </div>
+</div>
+
+<script>
+// Relative paths only (no leading slash) so requests work behind the Workbench proxy.
+const state = { cfg: null, filters: [], dimension: null };
+const charts = {};
+let runId = 0;
+const BLUE = '#2563eb', GREEN = '#10b981', MUTED = '#64748b', LINE = '#e2e8f0';
+
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const fmt = {
+    number: v => v === null || v === undefined ? '-' : Number(v).toLocaleString(),
+    percent: v => v === null || v === undefined ? '-' : (Number(v) * 100).toFixed(1) + '%',
+};
+const fmtFor = key => fmt[state.cfg.measures[key]?.format] || fmt.number;
+
+async function getJSON(path, params) {
+    const res = await fetch(`${path}?${params}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+}
+
+function filterParams(extra) {
+    const p = new URLSearchParams(extra || {});
+    state.filters.forEach(f => p.append('filter', `${f.dim}:${f.value}`));
+    return p;
+}
+
+function chart(id) {
+    if (!charts[id]) charts[id] = echarts.init(document.getElementById(id), null, { renderer: 'canvas' });
+    return charts[id];
+}
+
+function showError(id, e) {
+    if (charts[id]) { charts[id].dispose(); delete charts[id]; }
+    document.getElementById(id).innerHTML = `<div class="error">${esc(e.message)}</div>`;
+}
+
+function sortRows(rows, dim) {
+    const order = state.cfg.dimensions[dim].order;
+    if (!order) return rows;
+    return [...rows].sort((a, b) => order.indexOf(a.d) - order.indexOf(b.d));
+}
+
+// ---- setup --------------------------------------------------------------
+
+async function init() {
+    state.cfg = await getJSON('api/overview/config', '');
+    const cfg = state.cfg;
+    document.getElementById('title').textContent = cfg.title;
+    document.getElementById('description').textContent = cfg.description;
+    document.getElementById('privacy').textContent =
+        `Groups with fewer than ${cfg.min_group_size} members are hidden to protect privacy.`;
+
+    document.getElementById('kpis').innerHTML = cfg.kpis.map(k =>
+        `<div class="card kpi"><div class="label">${esc(k.label)}</div><div class="value" id="kpi-${k.key}">-</div><div class="hint">${esc(k.description)}</div></div>`).join('');
+
+    const sel = document.getElementById('dimension');
+    sel.innerHTML = cfg.breakdown.selectable.map(d => `<option value="${d}">${esc(cfg.dimensions[d].label)}</option>`).join('');
+    state.dimension = cfg.breakdown.default;
+    sel.value = state.dimension;
+    sel.onchange = () => { state.dimension = sel.value; renderBreakdown(); updateHint(); };
+
+    document.getElementById('questions').innerHTML = cfg.questions.map(q => `<li>${esc(q.question)}</li>`).join('');
+    window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
+    updateHint();
+    refresh();
+}
+
+function nextInPath(dim) {
+    const path = state.cfg.breakdown.drill_path;
+    const i = path.indexOf(dim);
+    return i >= 0 && i < path.length - 1 ? path[i + 1] : null;
+}
+
+function updateHint() {
+    const next = nextInPath(state.dimension);
+    document.getElementById('drillhint').textContent =
+        next ? `Click a bar to drill into ${state.cfg.dimensions[next].label.toLowerCase()}` : 'Click a bar to filter by it';
+}
+
+function renderChips() {
+    const box = document.getElementById('chips');
+    box.innerHTML = '';
+    if (!state.filters.length) {
+        box.innerHTML = '<span class="hintline">Showing all members. Click a bar below to drill in.</span>';
+        return;
+    }
+    state.filters.forEach((f, i) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.append(`${state.cfg.dimensions[f.dim].label}: ${f.value}`);
+        const x = document.createElement('button');
+        x.textContent = '×';
+        x.title = 'Remove filter';
+        x.onclick = () => { state.filters.splice(i, 1); refresh(); };
+        chip.append(x);
+        box.append(chip);
+    });
+    const clear = document.createElement('button');
+    clear.className = 'linkbtn';
+    clear.textContent = 'Clear all';
+    clear.onclick = () => { state.filters = []; refresh(); };
+    box.append(clear);
+}
+
+function drill(value) {
+    const dim = state.dimension;
+    state.filters = state.filters.filter(f => f.dim !== dim);
+    state.filters.push({ dim, value });
+    const next = nextInPath(dim);
+    if (next) {
+        state.dimension = next;
+        document.getElementById('dimension').value = next;
+    }
+    updateHint();
+    refresh();
+}
+
+// ---- data ---------------------------------------------------------------
+
+function refresh() {
+    runId++;
+    renderChips();
+    renderKpis();
+    renderTrend();
+    renderBreakdown();
+}
+
+async function renderKpis() {
+    const my = runId;
+    state.cfg.kpis.forEach(k => { document.getElementById(`kpi-${k.key}`).textContent = '…'; });
+    try {
+        const data = await getJSON('api/overview/kpis', filterParams());
+        if (my !== runId) return;
+        state.cfg.kpis.forEach(k => {
+            document.getElementById(`kpi-${k.key}`).textContent =
+                data.suppressed ? `<${state.cfg.min_group_size}` : fmtFor(k.key)(data.values[k.key]);
+        });
+        document.getElementById('sql').textContent = data.sql;
+    } catch (e) {
+        state.cfg.kpis.forEach(k => { document.getElementById(`kpi-${k.key}`).textContent = '-'; });
+    }
+}
+
+const axisStyle = { axisLine: { lineStyle: { color: LINE } }, axisLabel: { color: MUTED }, splitLine: { lineStyle: { color: '#f1f5f9' } } };
+
+async function renderTrend() {
+    const my = runId;
+    const t = state.cfg.trend;
+    try {
+        const data = await getJSON('api/overview/grouped', filterParams({ dimension: t.dimension, measures: t.measures.join(',') }));
+        if (my !== runId) return;
+        const el = document.getElementById('trend');
+        if (!charts.trend) el.innerHTML = '';
+        const months = data.rows.map(r => r.d.slice(0, 7));
+        chart('trend').setOption({
+            color: [BLUE, GREEN],
+            grid: { left: 8, right: 16, top: 36, bottom: 56, containLabel: true },
+            legend: { top: 0, right: 0, textStyle: { color: MUTED } },
+            tooltip: { trigger: 'axis', valueFormatter: v => fmt.number(v) },
+            xAxis: { type: 'category', data: months, boundaryGap: false, ...axisStyle, splitLine: { show: false } },
+            yAxis: { type: 'value', ...axisStyle, axisLine: { show: false } },
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8, borderColor: 'transparent' }],
+            series: t.measures.map((m, i) => ({
+                name: t.series_labels[m], type: 'line', smooth: true, showSymbol: false, lineStyle: { width: 3 },
+                areaStyle: { opacity: i === 0 ? 0.18 : 0.12 }, emphasis: { focus: 'series' },
+                data: data.rows.map(r => r[m]),
+            })),
+        }, true);
+    } catch (e) { showError('trend', e); }
+}
+
+async function renderBreakdown() {
+    const my = runId;
+    const dim = state.dimension;
+    const b = state.cfg.breakdown;
+    try {
+        const [counts, share] = await Promise.all([
+            getJSON('api/overview/grouped', filterParams({ dimension: dim, measures: b.measures.join(',') })),
+            getJSON('api/overview/grouped', filterParams({ dimension: dim, measures: b.share_measure })),
+        ]);
+        if (my !== runId || dim !== state.dimension) return;
+        const rows = sortRows(counts.rows, dim);
+        const shareRows = sortRows(share.rows, dim);
+        const names = rows.map(r => r.d);
+        ['breakdown', 'share'].forEach(id => { if (!charts[id]) document.getElementById(id).innerHTML = ''; });
+
+        const clickable = { cursor: 'pointer' };
+        const bc = chart('breakdown');
+        bc.off('click');
+        bc.setOption({
+            color: [BLUE, GREEN],
+            grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
+            legend: { top: 0, right: 0, textStyle: { color: MUTED } },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => fmt.number(v) },
+            xAxis: { type: 'category', data: names, axisLabel: { color: MUTED, interval: 0, rotate: names.length > 8 ? 35 : 0, width: 90, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
+            yAxis: { type: 'value', ...axisStyle, axisLine: { show: false } },
+            series: b.measures.map((m, i) => ({
+                name: i === 0 ? 'Total members' : 'Active members', type: 'bar', barMaxWidth: 34, ...clickable,
+                itemStyle: { borderRadius: [6, 6, 0, 0] }, emphasis: { focus: 'series' },
+                data: rows.map(r => r[m]),
+            })),
+        }, true);
+        bc.on('click', p => drill(p.name));
+
+        const sc = chart('share');
+        sc.off('click');
+        const byName = Object.fromEntries(shareRows.map(r => [r.d, r[b.share_measure]]));
+        const reversed = [...names].reverse();
+        sc.setOption({
+            color: [GREEN],
+            grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => fmt.percent(v) },
+            xAxis: { type: 'value', max: 1, axisLabel: { color: MUTED, formatter: v => `${Math.round(v * 100)}%` }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+            yAxis: { type: 'category', data: reversed, axisLabel: { color: MUTED, width: 110, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
+            series: [{
+                type: 'bar', barMaxWidth: 22, ...clickable, itemStyle: { borderRadius: [0, 6, 6, 0] },
+                label: { show: true, position: 'right', color: MUTED, formatter: p => fmt.percent(p.value) },
+                data: reversed.map(n => byName[n] ?? null),
+            }],
+        }, true);
+        sc.on('click', p => drill(p.name));
+    } catch (e) { showError('breakdown', e); showError('share', e); }
+}
+
+init().catch(e => {
+    document.querySelector('.container').insertAdjacentHTML('beforeend', `<div class="error">${esc(e.message)}</div>`);
+});
+</script>
+</body>
+</html>
