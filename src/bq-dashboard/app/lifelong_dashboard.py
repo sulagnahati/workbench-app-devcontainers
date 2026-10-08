@@ -49,10 +49,35 @@ class Dashboard:
             })
         listened = {name for t in self.tiles for name in t["listen"]}
         self.filters = [
-            {"name": f["name"], "field": f["field"], "default": str(f.get("default_value", "") or "")}
+            {
+                "name": f["name"],
+                "field": f["field"],
+                "default": str(f.get("default_value", "") or ""),
+                "kind": self._filter_kind(f["field"]),
+            }
             for f in raw.get("filters", [])
             if f["name"] in listened
         ]
+
+    def _filter_kind(self, field):
+        """grain: parameter dropdown, select: pick values from the data, text: free-form expression."""
+        if field == GRAIN_FILTER_FIELD:
+            return "grain"
+        try:
+            alias, _, name = field.partition(".")
+            dim = self.project.view_for_alias(alias).dimensions[name]
+        except (lk.Unsupported, KeyError):
+            return "text"
+        return "text" if dim.get("type") in ("time", "date", "date_time", "number") else "select"
+
+    def values_query(self, field):
+        """SQL listing the distinct values of a select-type filter field."""
+        if not any(f["field"] == field and f["kind"] == "select" for f in self.filters):
+            raise ValueError(f"Not a dropdown filter: {field}")
+        alias, _, name = field.partition(".")
+        c = lk.Compiler(self.project)
+        expr = c.field_sql(alias, name)
+        return c.assemble([f"CAST({expr} AS STRING) AS v"], group="v", order="v", limit=500)
 
     def config(self):
         return {

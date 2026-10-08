@@ -279,6 +279,13 @@ def api_lifelong_config():
     return jsonify(lifelong().config())
 
 
+@app.route("/api/lifelong/values")
+def api_lifelong_values():
+    sql = lifelong().values_query(request.args.get("field", ""))
+    rows = cached(("lifelong-values", sql), lambda: run(sql))
+    return jsonify([r["v"] for r in rows if r["v"] is not None])
+
+
 @app.route("/api/lifelong/tile")
 def api_lifelong_tile():
     tile_id = int(request.args.get("id", "-1"))
