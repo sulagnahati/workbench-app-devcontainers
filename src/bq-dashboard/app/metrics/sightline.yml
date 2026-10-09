@@ -1,0 +1,101 @@
+# Metric definitions for the Sightline wastewater surveillance dashboard.
+#
+# Written from a profile of the two datasets (docs/sightline_profile.md); there is no LookML for
+# this data. Changing a definition here changes every chart that uses it. Definitions marked
+# "default" are starting points that someone who knows the data should confirm.
+version: 1
+title: Wastewater Surveillance
+description: Pathogen levels and SARS-CoV-2 variant mix from wastewater treatment plants.
+
+sources:
+  pathogens:
+    # 1.35M result rows, one per pathogen per sample. The table is about 100 GB, almost all of it
+    # the plant_sewershed_geojson column: never select that column, and always filter by date.
+    table: wb-arctic-date-2446.ddpcr_dbt_commercializable_all.all
+    alias: r
+    date: r.sample_collection_date
+  variants:
+    # One row per sample and SARS-CoV-2 lineage; shares add up to 1 for each sample.
+    table: wb-arctic-date-2446.compbio_freyja_summary_abundances.freyja_summary_abundances
+    alias: v
+    date: v.collection_date
+    # Freyja's `site` equals the pathogen table's `plant_code` (44 of 50 sites match).
+    plant_key: v.site
+
+# Date windows offered on the page. Longer windows scan more data.
+date_presets:
+  3m: {months: 3, label: Last 3 months}
+  6m: {months: 6, label: Last 6 months}
+  12m: {months: 12, label: Last 12 months}
+  24m: {months: 24, label: Last 24 months}
+default_preset: 12m
+default_pathogen: SARS-CoV-2
+top_variants: 8
+min_samples_for_ranking: 3
+
+measures:
+  pathogen_level:
+    source: pathogens
+    label: Pathogen level
+    description: >-
+      Median PMMoV-normalised concentration (copies per PMMoV) across results. The median is used
+      because raw concentrations range up to billions of copies. Negative and missing values are
+      ignored. Default; confirm the preferred normalisation and outlier rule.
+    sql: APPROX_QUANTILES(IF(r.copies_per_pmmov >= 0, r.copies_per_pmmov, NULL), 100)[OFFSET(50)]
+  plants_reporting:
+    source: pathogens
+    label: Plants reporting
+    description: Treatment plants with at least one result in the period.
+    sql: COUNT(DISTINCT r.plant_code)
+  samples:
+    source: pathogens
+    label: Samples
+    description: Distinct wastewater samples collected in the period.
+    sql: COUNT(DISTINCT r.sample_id)
+  latest_sample:
+    source: pathogens
+    label: Latest sample date
+    description: Most recent collection date in the period.
+    sql: MAX(r.sample_collection_date)
+  variant_share:
+    source: variants
+    label: Variant share
+    description: >-
+      Average share of a lineage across samples. Each sample's shares add up to 100%, so the
+      averages for a week also add up to 100%. Samples are weighted equally, not by population.
+    sql: AVG(v.abundance)
+
+dimensions:
+  week:
+    label: Week
+    description: Week starting Monday.
+    pathogens_sql: DATE_TRUNC(r.sample_collection_date, WEEK(MONDAY))
+    variants_sql: DATE_TRUNC(v.collection_date, WEEK(MONDAY))
+  pathogen:
+    label: Pathogen
+    description: Pathogen name from the lab results.
+    sql: r.pathogen
+  state:
+    label: State
+    description: State of the treatment plant.
+    sql: r.plant_state
+  plant:
+    label: Plant
+    description: Treatment plant name.
+    sql: r.plant_name
+  lineage:
+    label: Lineage
+    description: SARS-CoV-2 lineage reported by Freyja. The lineages beyond the top few are grouped as Other on the page.
+    sql: v.lineage
+
+questions:
+  - question: Which SARS-CoV-2 variants are circulating, and how is the mix changing?
+    uses: [variant_share, lineage, week]
+  - question: Is the level of a pathogen (for example influenza A or RSV) rising or falling?
+    uses: [pathogen_level, pathogen, week]
+  - question: Which states and plants currently have the highest levels of a pathogen?
+    uses: [pathogen_level, state, plant]
+  - question: Is a state's trend different from the national trend?
+    uses: [pathogen_level, state, week]
+  - question: How many plants and samples are behind these numbers?
+    uses: [plants_reporting, samples, latest_sample]

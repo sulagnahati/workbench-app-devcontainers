@@ -5,14 +5,14 @@
     <title>Member Overview</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
-        :root { --blue: #2563eb; --green: #10b981; --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --bg: #f1f5f9; }
+        :root { --blue: #214c43; --green: #36786a; --ink: #1a1a1a; --muted: #666c74; --line: #dedbd2; --bg: #f1efe9; }
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--ink); }
         .container { max-width: 1240px; margin: 0 auto; padding: 28px 24px 48px; }
         header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.02em; }
         header p { margin: 0; color: var(--muted); font-size: 14px; }
         nav { margin-top: 10px; font-size: 13px; }
-        nav a { color: var(--blue); text-decoration: none; margin-right: 14px; }
+        nav a { color: var(--green); text-decoration: none; margin-right: 14px; }
         .card { background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.04); }
         .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 16px; }
         .kpi .label { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
@@ -21,8 +21,8 @@
         .kpi:nth-child(1) .value { color: var(--blue); }
         .kpi:nth-child(2) .value { color: var(--green); }
         .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 34px; margin-bottom: 14px; font-size: 13px; }
-        .chip { background: #dbeafe; color: #1e40af; border-radius: 999px; padding: 5px 6px 5px 12px; display: inline-flex; gap: 6px; align-items: center; }
-        .chip button { border: 0; background: rgba(30,64,175,.15); color: #1e40af; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
+        .chip { background: #d7e491; color: #122d28; border-radius: 999px; padding: 5px 6px 5px 12px; display: inline-flex; gap: 6px; align-items: center; }
+        .chip button { border: 0; background: rgba(18,45,40,.15); color: #122d28; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
         .linkbtn { border: 0; background: none; color: var(--blue); cursor: pointer; font-size: 13px; }
         .hintline { color: var(--muted); }
         .row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
@@ -36,7 +36,7 @@
         .error { color: #b91c1c; background: #fee2e2; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
         details { margin-top: 8px; font-size: 13px; color: var(--muted); }
         details li { margin: 4px 0; }
-        pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
+        pre { background: #122d28; color: #f1efe9; padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
         @media (max-width: 900px) { .kpis, .two { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -45,7 +45,7 @@
     <header>
         <h1 id="title">Member Overview</h1>
         <p id="description"></p>
-        <nav><a href="./">Table dashboard</a><a href="lifelong">Lifelong dashboard</a><a href="lookml">LookML explorer</a></nav>
+        <nav><a href="./">Table dashboard</a><a href="sightline">Wastewater</a><a href="lifelong">Lifelong dashboard</a><a href="lookml">LookML explorer</a></nav>
     </header>
 
     <div class="kpis" id="kpis"></div>
@@ -87,7 +87,7 @@
 const state = { cfg: null, filters: [], dimension: null };
 const charts = {};
 let runId = 0;
-const BLUE = '#2563eb', GREEN = '#10b981', MUTED = '#64748b', LINE = '#e2e8f0';
+const BLUE = '#214c43', GREEN = '#569770', MUTED = '#666c74', LINE = '#dedbd2';
 
 function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -228,7 +228,7 @@ async function renderKpis() {
     }
 }
 
-const axisStyle = { axisLine: { lineStyle: { color: LINE } }, axisLabel: { color: MUTED }, splitLine: { lineStyle: { color: '#f1f5f9' } } };
+const axisStyle = { axisLine: { lineStyle: { color: LINE } }, axisLabel: { color: MUTED }, splitLine: { lineStyle: { color: '#eeece6' } } };
 
 async function renderTrend() {
     const my = runId;
@@ -297,7 +297,7 @@ async function renderBreakdown() {
             color: [GREEN],
             grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => fmt.percent(v) },
-            xAxis: { type: 'value', max: 1, axisLabel: { color: MUTED, formatter: v => `${Math.round(v * 100)}%` }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+            xAxis: { type: 'value', max: 1, axisLabel: { color: MUTED, formatter: v => `${Math.round(v * 100)}%` }, splitLine: { lineStyle: { color: '#eeece6' } } },
             yAxis: { type: 'category', data: reversed, axisLabel: { color: MUTED, width: 110, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
             series: [{
                 type: 'bar', barMaxWidth: 22, ...clickable, itemStyle: { borderRadius: [0, 6, 6, 0] },

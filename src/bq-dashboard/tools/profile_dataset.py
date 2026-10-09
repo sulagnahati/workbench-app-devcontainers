@@ -6,7 +6,10 @@ what a dashboard can show before writing any metric definitions.
 
 Usage:
   python tools/profile_dataset.py PROJECT.DATASET [--billing-project P] [--tables a,b]
-         [--max-gb 20] [--dry-run] > profile.md
+         [--max-gb 20] [--exclude col1,col2] [--where "SQL condition"] [--dry-run] > profile.md
+
+--exclude skips wide columns (such as GeoJSON text) to cut cost; --where limits the rows profiled
+(for example a recent date range on a partitioned table). Both also bypass the --max-gb check.
 """
 import argparse
 
@@ -30,13 +33,18 @@ def profile_table(client, ref, table, args):
         print(f"- Partitioned by: {table.time_partitioning.field or '_PARTITIONTIME'}")
     if table.modified:
         print(f"- Last modified: {table.modified:%Y-%m-%d}")
-    cols = [f for f in table.schema if f.mode != "REPEATED" and f.field_type not in ("RECORD", "STRUCT", "JSON", "GEOGRAPHY", "BYTES")]
+    excluded = set(args.exclude.split(",")) if args.exclude else set()
+    cols = [f for f in table.schema if f.mode != "REPEATED" and f.field_type not in ("RECORD", "STRUCT", "JSON", "GEOGRAPHY", "BYTES") and f.name not in excluded]
+    if excluded:
+        print(f"- Excluded columns: {', '.join(sorted(excluded))}")
+    if args.where:
+        print(f"- Profiled rows matching: `{args.where}`")
     skipped = len(table.schema) - len(cols)
     if skipped:
         print(f"- Skipped {skipped} nested/repeated/binary columns")
     if table.table_type == "VIEW" and gb == 0:
         print("- View: size unknown, profiling anyway")
-    elif gb > args.max_gb:
+    elif gb > args.max_gb and not (args.exclude or args.where):
         print(f"- Too large to scan (over {args.max_gb} GB); schema only. Use --max-gb to override.")
         print("\n| Column | Type |\n|---|---|")
         for f in cols:
@@ -50,7 +58,8 @@ def profile_table(client, ref, table, args):
         if f.field_type in NUMERIC | TIME:
             exprs.append(f"CAST(MIN({c}) AS STRING) AS lo{i}")
             exprs.append(f"CAST(MAX({c}) AS STRING) AS hi{i}")
-    sql = f"SELECT {', '.join(exprs)} FROM {q(ref)}"
+    where = f" WHERE {args.where}" if args.where else ""
+    sql = f"SELECT {', '.join(exprs)} FROM {q(ref)}{where}"
     cfg = bigquery.QueryJobConfig(dry_run=args.dry_run, use_query_cache=True)
     job = client.query(sql, job_config=cfg)
     if args.dry_run:
@@ -71,7 +80,7 @@ def profile_table(client, ref, table, args):
     for f in low:
         c = q(f.name)
         rows = client.query(
-            f"SELECT CAST({c} AS STRING) AS v, COUNT(*) AS n FROM {q(ref)} GROUP BY v ORDER BY n DESC LIMIT 10"
+            f"SELECT CAST({c} AS STRING) AS v, COUNT(*) AS n FROM {q(ref)}{where} GROUP BY v ORDER BY n DESC LIMIT 10"
         ).result()
         vals = ", ".join(f"{r['v']} ({r['n']:,})" for r in rows)
         print(f"\n- **{f.name}** top values: {vals}")
@@ -83,6 +92,8 @@ def main():
     p.add_argument("--billing-project", help="project that runs the queries (default: the dataset's project)")
     p.add_argument("--tables", help="comma-separated table names (default: all)")
     p.add_argument("--max-gb", type=float, default=20)
+    p.add_argument("--exclude", help="comma-separated columns to skip")
+    p.add_argument("--where", help="SQL condition limiting the rows profiled")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
     project, _, dataset = args.dataset.partition(".")
@@ -94,7 +105,7 @@ def main():
         try:
             profile_table(client, ref, client.get_table(ref), args)
         except Exception as e:
-            print(f"\n## {name}\n\n- Could not profile: {str(e)[:200]}")
+            print(f"\n## {name}\n\n- Could not profile: {str(e)[:900]}")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from google.cloud import bigquery
 
 import lifelong_dashboard
 import overview
+import sightline
 import lookml_engine
 
 app = Flask(__name__)
@@ -324,6 +325,84 @@ def api_overview_grouped():
     sql, params = ov.grouped(request.args.get("dimension", ""), measures, overview_filters())
     rows = overview_run(sql, params)
     return jsonify({"rows": [{k: jsonable(v) for k, v in r.items()} for r in rows], "sql": sql})
+
+
+# ---- Wastewater surveillance (Sightline) ------------------------------------
+
+def sightline_model():
+    if "sightline" not in _lookml:
+        _lookml["sightline"] = sightline.Sightline()
+    return _lookml["sightline"]
+
+
+def sl_args():
+    a = request.args
+    model = sightline_model()
+    return {
+        "preset": a.get("preset") or model.default_preset,
+        "pathogen": a.get("pathogen") or None,
+        "state": a.get("state") or None,
+        "plant": a.get("plant") or None,
+    }
+
+
+def sl_run(sql, params):
+    key = ("sightline", sql, tuple(sorted(params.items())))
+    return cached(key, lambda: run(sql, lookml_params(params)))
+
+
+def sl_rows(rows):
+    return [{k: jsonable(v) for k, v in r.items()} for r in rows]
+
+
+@app.route("/sightline")
+def sightline_page():
+    return render_template("sightline.html")
+
+
+@app.route("/api/sightline/config")
+def api_sl_config():
+    return jsonify(sightline_model().config())
+
+
+@app.route("/api/sightline/values")
+def api_sl_values():
+    sql, params = sightline_model().values(request.args.get("kind", ""))
+    return jsonify([r["v"] for r in sl_run(sql, params)])
+
+
+@app.route("/api/sightline/kpis")
+def api_sl_kpis():
+    sql, params = sightline_model().kpis(**sl_args())
+    return jsonify({"row": sl_rows(sl_run(sql, params))[0], "sql": sql})
+
+
+@app.route("/api/sightline/trend")
+def api_sl_trend():
+    a = sl_args()
+    sql, params = sightline_model().trend(a["preset"], a["pathogen"], a["state"], a["plant"])
+    return jsonify({"rows": sl_rows(sl_run(sql, params)), "sql": sql})
+
+
+@app.route("/api/sightline/ranking")
+def api_sl_ranking():
+    a = sl_args()
+    sql, params = sightline_model().ranking(a["preset"], a["pathogen"], a["state"])
+    return jsonify({"rows": sl_rows(sl_run(sql, params)), "by": "plant" if a["state"] else "state", "sql": sql})
+
+
+@app.route("/api/sightline/plants")
+def api_sl_plants():
+    a = sl_args()
+    sql, params = sightline_model().plants(a["preset"], a["pathogen"], a["state"])
+    return jsonify({"rows": sl_rows(sl_run(sql, params)), "sql": sql})
+
+
+@app.route("/api/sightline/variants")
+def api_sl_variants():
+    a = sl_args()
+    sql, params = sightline_model().variants(a["preset"], a["state"], a["plant"])
+    return jsonify({"rows": sl_rows(sl_run(sql, params)), "sql": sql})
 
 
 @app.route("/api/lifelong/config")

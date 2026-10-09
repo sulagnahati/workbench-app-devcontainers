@@ -2,11 +2,11 @@
 
 Who our members are, how many are active, and how sign-ups are trending.
 
-Generated from `app/metrics/patient_overview.yml`. Groups with fewer than 11 members are hidden.
+Generated from the metrics file (see `app/metrics/`). Groups with fewer than 11 members are hidden.
 
 ## Measures
 
-| Measure | Meaning | Rule | LookML source |
+| Measure | Meaning | Rule | Source |
 |---|---|---|---|
 | Total members | Distinct members (patients) in the table. | `COUNT(DISTINCT patient.id)` | patient_gold_latest.unique_patient_count |
 | Active members | Distinct members whose record is marked active in their program. | `COUNT(DISTINCT IF(COALESCE(patient.is_active, FALSE), patient.id, NULL))` | patient_gold_latest.active_patient_version_count |
@@ -14,7 +14,7 @@ Generated from `app/metrics/patient_overview.yml`. Groups with fewer than 11 mem
 
 ## Dimensions
 
-| Dimension | Meaning | Rule | LookML source |
+| Dimension | Meaning | Rule | Source |
 |---|---|---|---|
 | Organization | Human-readable name of the organization the member belongs to. | `patient.organization_compartment_name` | patient_gold_latest.organization_compartment_name |
 | Care program | Name of the care program the member is enrolled in. | `patient.care_program_enrolled_healthcareservice_name` | patient_gold_latest.enrolled_healthcare_service |

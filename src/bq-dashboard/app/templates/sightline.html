@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Wastewater Surveillance</title>
+    <link rel="stylesheet" href="static/verily.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; margin: 0; background: var(--v-offwhite); color: var(--v-black); }
+        .top { background: var(--v-green-dark); color: var(--v-white); }
+        .top .inner { max-width: 1260px; margin: 0 auto; padding: 24px 24px 20px; }
+        .top h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .01em; }
+        .top p { margin: 0; color: var(--v-lime); font-size: 14px; }
+        .top nav { margin-top: 10px; font-size: 13px; }
+        .top nav a { color: var(--v-white); opacity: .8; text-decoration: none; margin-right: 16px; }
+        .top nav a:hover { opacity: 1; }
+        .container { max-width: 1260px; margin: 0 auto; padding: 20px 24px 48px; }
+        .controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; margin-bottom: 14px; }
+        .controls label { display: flex; flex-direction: column; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--v-slate); gap: 4px; }
+        select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--v-line); background: var(--v-white); font-size: 14px; min-width: 190px; color: var(--v-black); }
+        .card { background: var(--v-white); border-radius: 12px; padding: 18px 20px; border: 1px solid var(--v-line); }
+        .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+        .kpi .label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--v-slate); }
+        .kpi .value { font-size: 32px; font-weight: 700; margin-top: 6px; color: var(--v-green-dark); letter-spacing: -0.01em; }
+        .kpi .hint { font-size: 12px; color: var(--v-slate); margin-top: 2px; min-height: 16px; }
+        .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 34px; margin-bottom: 12px; font-size: 13px; color: var(--v-slate); }
+        .chip { background: var(--v-lime); color: var(--v-green-deep); border-radius: 999px; padding: 5px 6px 5px 12px; display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+        .chip button { border: 0; background: rgba(18,45,40,.15); color: var(--v-green-deep); border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
+        .linkbtn { border: 0; background: none; color: var(--v-teal); cursor: pointer; font-size: 13px; font-weight: 600; }
+        .row { display: grid; gap: 14px; margin-bottom: 14px; }
+        .two { grid-template-columns: 1fr 1fr; }
+        h2 { font-size: 16px; margin: 0 0 2px; color: var(--v-green-dark); }
+        .sub { font-size: 12px; color: var(--v-slate); margin-bottom: 8px; }
+        .chart { width: 100%; height: 340px; }
+        .chart.hero { height: 400px; }
+        .error { color: #8a1c1c; background: #f6dede; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+        details { margin-top: 8px; font-size: 13px; color: var(--v-slate); }
+        details li { margin: 4px 0; }
+        pre { background: var(--v-green-deep); color: var(--v-offwhite); padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
+        @media (max-width: 900px) { .kpis, .two { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="top"><div class="inner">
+    <h1 id="title">Wastewater Surveillance</h1>
+    <p id="description"></p>
+    <nav><a href="./">Table dashboard</a><a href="overview">Member overview</a><a href="lifelong">Lifelong dashboard</a></nav>
+</div></div>
+
+<div class="container">
+    <div class="controls">
+        <label>Date range <select id="preset"></select></label>
+        <label>Pathogen <select id="pathogen"></select></label>
+        <label>State <select id="state"><option value="">All states</option></select></label>
+    </div>
+    <div class="chips" id="chips"></div>
+
+    <div class="kpis" id="kpis">
+        <div class="card kpi"><div class="label">Leading variant</div><div class="value" id="kpi-variant">-</div><div class="hint" id="hint-variant">Most common SARS-CoV-2 lineage, latest week</div></div>
+        <div class="card kpi"><div class="label">Plants reporting</div><div class="value" id="kpi-plants">-</div><div class="hint" id="hint-plants"></div></div>
+        <div class="card kpi"><div class="label">Samples</div><div class="value" id="kpi-samples">-</div><div class="hint" id="hint-samples"></div></div>
+        <div class="card kpi"><div class="label">Latest sample</div><div class="value" id="kpi-latest">-</div><div class="hint" id="hint-latest"></div></div>
+    </div>
+
+    <div class="row"><div class="card">
+        <h2>SARS-CoV-2 variant mix</h2>
+        <div class="sub" id="variant-sub">Share of each lineage by week. Click a name in the legend to hide or show it.</div>
+        <div id="variants" class="chart hero"></div>
+    </div></div>
+
+    <div class="row"><div class="card">
+        <h2 id="trend-title">Pathogen level over time</h2>
+        <div class="sub">Weekly median level, normalised by PMMoV so plants can be compared. Drag the slider to zoom.</div>
+        <div id="trend" class="chart"></div>
+    </div></div>
+
+    <div class="row two">
+        <div class="card">
+            <h2 id="rank-title">Highest levels by state</h2>
+            <div class="sub" id="rank-sub">Click a bar to drill in.</div>
+            <div id="ranking" class="chart"></div>
+        </div>
+        <div class="card">
+            <h2>Plants</h2>
+            <div class="sub">Each bubble is a treatment plant: size shows the population served, colour shows the current level. Click a bubble to select it.</div>
+            <div id="plants" class="chart"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Questions this dashboard answers</h2>
+        <details open><summary>Show</summary><ul id="questions"></ul></details>
+        <details><summary>Query behind the last refresh</summary><pre id="sql"></pre></details>
+    </div>
+</div>
+
+<script>
+// Relative paths only (no leading slash) so requests work behind the Workbench proxy.
+const S = { cfg: null, preset: null, pathogen: null, state: '', plant: '' };
+const charts = {};
+let runId = 0;
+const C = { teal: '#36786a', dark: '#214c43', deep: '#122d28', lime: '#d7e491', slate: '#666c74', green: '#569770', line: '#dedbd2' };
+
+function tint(hex, amount) {
+    const n = parseInt(hex.slice(1), 16);
+    const mix = c => Math.round(c + (255 - c) * amount);
+    return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix).map(v => v.toString(16).padStart(2, '0')).join('');
+}
+const LINEAGE_COLORS = [C.dark, C.teal, C.lime, C.green, C.slate, C.deep, tint(C.teal, .45), tint(C.green, .5)];
+const OTHER_COLOR = tint(C.slate, .65);
+
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const num = v => v === null || v === undefined ? '-' : Number(v).toLocaleString();
+const level = v => v === null || v === undefined ? '-' : Number(v) >= 100 ? Number(v).toFixed(0) : Number(v).toPrecision(3);
+
+async function getJSON(path, params) {
+    const res = await fetch(`${path}?${params}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+}
+function args(extra) {
+    const p = new URLSearchParams({ preset: S.preset });
+    if (S.pathogen) p.set('pathogen', S.pathogen);
+    if (S.state) p.set('state', S.state);
+    if (S.plant) p.set('plant', S.plant);
+    Object.entries(extra || {}).forEach(([k, v]) => v === null ? p.delete(k) : p.set(k, v));
+    return p;
+}
+function chart(id) {
+    if (!charts[id]) { document.getElementById(id).innerHTML = ''; charts[id] = echarts.init(document.getElementById(id)); }
+    return charts[id];
+}
+function showError(id, e) {
+    if (charts[id]) { charts[id].dispose(); delete charts[id]; }
+    document.getElementById(id).innerHTML = `<div class="error">${esc(e.message)}</div>`;
+}
+const axis = { axisLine: { lineStyle: { color: C.line } }, axisLabel: { color: C.slate }, splitLine: { lineStyle: { color: '#eeece6' } } };
+
+// ---- setup --------------------------------------------------------------
+
+async function init() {
+    S.cfg = await getJSON('api/sightline/config', '');
+    const cfg = S.cfg;
+    document.getElementById('title').textContent = cfg.title;
+    document.getElementById('description').textContent = cfg.description;
+    document.getElementById('questions').innerHTML = cfg.questions.map(q => `<li>${esc(q.question)}</li>`).join('');
+    S.preset = cfg.default_preset;
+    S.pathogen = cfg.default_pathogen;
+
+    const preset = document.getElementById('preset');
+    preset.innerHTML = Object.entries(cfg.presets).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
+    preset.value = S.preset;
+    preset.onchange = () => { S.preset = preset.value; refresh(); };
+
+    const pathogen = document.getElementById('pathogen');
+    pathogen.innerHTML = `<option>${esc(S.pathogen)}</option>`;
+    pathogen.onchange = () => { S.pathogen = pathogen.value; refresh(); };
+    const state = document.getElementById('state');
+    state.onchange = () => { S.state = state.value; S.plant = ''; refresh(); };
+
+    window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
+    refresh();
+    loadLists();
+}
+
+async function loadLists() {
+    try {
+        const [paths, states] = await Promise.all([
+            getJSON('api/sightline/values', 'kind=pathogen'), getJSON('api/sightline/values', 'kind=state')]);
+        const p = document.getElementById('pathogen');
+        p.innerHTML = paths.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+        p.value = paths.includes(S.pathogen) ? S.pathogen : paths[0];
+        const s = document.getElementById('state');
+        s.innerHTML = '<option value="">All states</option>' + states.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+        s.value = S.state;
+    } catch (e) { /* keep the defaults */ }
+}
+
+function renderChips() {
+    const box = document.getElementById('chips');
+    box.innerHTML = '';
+    const items = [];
+    if (S.state) items.push(['State', S.state, () => { S.state = ''; S.plant = ''; document.getElementById('state').value = ''; }]);
+    if (S.plant) items.push(['Plant', S.plant, () => { S.plant = ''; }]);
+    if (!items.length) { box.textContent = 'Showing all plants. Click a bar or bubble to drill in.'; return; }
+    items.forEach(([label, value, clear]) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.append(`${label}: ${value}`);
+        const x = document.createElement('button');
+        x.textContent = '×'; x.title = 'Remove filter';
+        x.onclick = () => { clear(); refresh(); };
+        chip.append(x); box.append(chip);
+    });
+    const all = document.createElement('button');
+    all.className = 'linkbtn'; all.textContent = 'Clear all';
+    all.onclick = () => { S.state = ''; S.plant = ''; document.getElementById('state').value = ''; refresh(); };
+    box.append(all);
+}
+
+function refresh() {
+    runId++;
+    renderChips();
+    document.getElementById('trend-title').textContent = `${S.pathogen} level over time`;
+    document.getElementById('rank-title').textContent = S.state ? `Highest ${S.pathogen} levels by plant in ${S.state}` : `Highest ${S.pathogen} levels by state`;
+    renderVariants(); renderKpis(); renderTrend(); renderRanking(); renderPlants();
+}
+
+// ---- charts -------------------------------------------------------------
+
+async function renderVariants() {
+    const my = runId;
+    const top = S.cfg.top_variants;
+    try {
+        const data = await getJSON('api/sightline/variants', args({ pathogen: null }));
+        if (my !== runId) return;
+        const weeks = [...new Set(data.rows.map(r => r.d))].sort();
+        const totals = {};
+        data.rows.forEach(r => { if (r.lineage !== 'Other') totals[r.lineage] = (totals[r.lineage] || 0) + r.share; });
+        const keep = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, top);
+        const by = {};
+        data.rows.forEach(r => {
+            const name = keep.includes(r.lineage) ? r.lineage : 'Other';
+            by[name] = by[name] || {};
+            by[name][r.d] = (by[name][r.d] || 0) + r.share;
+        });
+        const names = [...keep, ...(by.Other ? ['Other'] : [])];
+        const latest = weeks[weeks.length - 1];
+        const lead = keep.slice().sort((a, b) => (by[b]?.[latest] || 0) - (by[a]?.[latest] || 0))[0];
+        document.getElementById('kpi-variant').textContent = lead || '-';
+        document.getElementById('hint-variant').textContent = lead ? `${((by[lead][latest] || 0) * 100).toFixed(0)}% of samples, week of ${latest}` : 'No samples in this period';
+        chart('variants').setOption({
+            color: names.map((n, i) => n === 'Other' ? OTHER_COLOR : LINEAGE_COLORS[i % LINEAGE_COLORS.length]),
+            grid: { left: 8, right: 16, top: 40, bottom: 52, containLabel: true },
+            legend: { top: 0, type: 'scroll', textStyle: { color: C.slate } },
+            tooltip: { trigger: 'axis', valueFormatter: v => `${(v * 100).toFixed(1)}%`, order: 'valueDesc' },
+            xAxis: { type: 'category', data: weeks, boundaryGap: false, ...axis, splitLine: { show: false } },
+            yAxis: { type: 'value', max: 1, ...axis, axisLabel: { color: C.slate, formatter: v => `${Math.round(v * 100)}%` }, axisLine: { show: false } },
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 6, borderColor: 'transparent' }],
+            series: names.map(n => ({
+                name: n, type: 'line', stack: 'share', smooth: 0.2, showSymbol: false, lineStyle: { width: 0.5 },
+                areaStyle: { opacity: 0.92 }, emphasis: { focus: 'series' },
+                data: weeks.map(w => by[n]?.[w] ?? 0),
+            })),
+        }, true);
+        document.getElementById('sql').textContent = data.sql;
+    } catch (e) { showError('variants', e); }
+}
+
+async function renderKpis() {
+    const my = runId;
+    ['plants', 'samples', 'latest'].forEach(k => { document.getElementById(`kpi-${k}`).textContent = '…'; });
+    try {
+        const data = await getJSON('api/sightline/kpis', args());
+        if (my !== runId) return;
+        const r = data.row;
+        document.getElementById('kpi-plants').textContent = num(r.plants);
+        document.getElementById('kpi-samples').textContent = num(r.samples);
+        document.getElementById('kpi-latest').textContent = r.latest || '-';
+        document.getElementById('hint-plants').textContent = `reporting ${S.pathogen}`;
+        document.getElementById('hint-samples').textContent = 'distinct samples';
+        document.getElementById('hint-latest').textContent = 'most recent collection date';
+    } catch (e) { ['plants', 'samples', 'latest'].forEach(k => { document.getElementById(`kpi-${k}`).textContent = '-'; }); }
+}
+
+async function renderTrend() {
+    const my = runId;
+    try {
+        const scoped = S.state || S.plant;
+        const [main, national] = await Promise.all([
+            getJSON('api/sightline/trend', args()),
+            scoped ? getJSON('api/sightline/trend', args({ state: null, plant: null })) : Promise.resolve(null),
+        ]);
+        if (my !== runId) return;
+        const weeks = main.rows.map(r => r.d);
+        const series = [{
+            name: S.plant || S.state || 'All plants', type: 'line', smooth: 0.2, showSymbol: false, lineStyle: { width: 3, color: C.teal },
+            itemStyle: { color: C.teal }, areaStyle: { color: C.teal, opacity: 0.14 }, data: main.rows.map(r => r.level),
+        }];
+        if (national) {
+            const byWeek = Object.fromEntries(national.rows.map(r => [r.d, r.level]));
+            series.push({ name: 'All plants', type: 'line', smooth: 0.2, showSymbol: false, lineStyle: { width: 2, type: 'dashed', color: C.slate }, itemStyle: { color: C.slate }, data: weeks.map(w => byWeek[w] ?? null) });
+        }
+        chart('trend').setOption({
+            grid: { left: 8, right: 16, top: 36, bottom: 56, containLabel: true },
+            legend: { top: 0, right: 0, textStyle: { color: C.slate } },
+            tooltip: { trigger: 'axis', valueFormatter: level },
+            xAxis: { type: 'category', data: weeks, boundaryGap: false, ...axis, splitLine: { show: false } },
+            yAxis: { type: 'value', name: 'copies per PMMoV', nameTextStyle: { color: C.slate }, ...axis, axisLine: { show: false } },
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8, borderColor: 'transparent' }],
+            series,
+        }, true);
+    } catch (e) { showError('trend', e); }
+}
+
+async function renderRanking() {
+    const my = runId;
+    try {
+        const data = await getJSON('api/sightline/ranking', args());
+        if (my !== runId) return;
+        const rows = data.rows.slice(0, 15).reverse();
+        const c = chart('ranking');
+        c.off('click');
+        c.setOption({
+            grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: p => `${esc(p[0].name)}<br/>Level: ${level(p[0].value)}<br/>${num(rows[p[0].dataIndex].samples)} samples` },
+            xAxis: { type: 'value', ...axis, axisLine: { show: false } },
+            yAxis: { type: 'category', data: rows.map(r => r.d), axisLabel: { color: C.slate, width: 120, overflow: 'truncate' }, axisLine: { lineStyle: { color: C.line } } },
+            series: [{ type: 'bar', barMaxWidth: 20, cursor: 'pointer', itemStyle: { color: C.teal, borderRadius: [0, 6, 6, 0] },
+                label: { show: true, position: 'right', color: C.slate, formatter: p => level(p.value) }, data: rows.map(r => r.level) }],
+        }, true);
+        c.on('click', p => {
+            if (data.by === 'state') { S.state = p.name; document.getElementById('state').value = p.name; }
+            else { S.plant = p.name; }
+            refresh();
+        });
+    } catch (e) { showError('ranking', e); }
+}
+
+async function renderPlants() {
+    const my = runId;
+    try {
+        const data = await getJSON('api/sightline/plants', args());
+        if (my !== runId) return;
+        const rows = data.rows;
+        const levels = rows.map(r => r.level).sort((a, b) => a - b);
+        const cap = levels.length ? levels[Math.floor(levels.length * 0.95)] || levels[levels.length - 1] : 1;
+        const c = chart('plants');
+        c.off('click');
+        c.setOption({
+            grid: { left: 8, right: 16, top: 8, bottom: 56, containLabel: true },
+            tooltip: { formatter: p => `${esc(p.data.name)} (${esc(p.data.state)})<br/>Level: ${level(p.data.value[2])}<br/>Population served: ${num(p.data.population)}` },
+            xAxis: { type: 'value', min: -170, max: -65, show: false },
+            yAxis: { type: 'value', min: 18, max: 72, show: false },
+            visualMap: { dimension: 2, min: 0, max: cap || 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, text: ['higher', 'lower'], textStyle: { color: C.slate }, inRange: { color: [C.lime, C.green, C.dark] }, outOfRange: { color: C.deep } },
+            series: [{
+                type: 'scatter', cursor: 'pointer',
+                symbolSize: d => Math.max(7, Math.min(30, Math.sqrt(d[3] || 1) / 40)),
+                itemStyle: { opacity: 0.85, borderColor: '#fff', borderWidth: 0.5 },
+                data: rows.map(r => ({ name: r.name, state: r.state, population: r.population, value: [r.lon, r.lat, r.level, r.population || 0] })),
+            }],
+        }, true);
+        c.on('click', p => { S.state = p.data.state; document.getElementById('state').value = p.data.state; S.plant = p.data.name; refresh(); });
+    } catch (e) { showError('plants', e); }
+}
+
+init().catch(e => { document.querySelector('.container').insertAdjacentHTML('afterbegin', `<div class="error">${esc(e.message)}</div>`); });
+</script>
+</body>
+</html>
