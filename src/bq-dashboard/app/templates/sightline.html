@@ -33,6 +33,7 @@
         h2 { font-size: 16px; margin: 0 0 2px; color: var(--v-green-dark); }
         .sub { font-size: 12px; color: var(--v-slate); margin-bottom: 8px; }
         .chart { width: 100%; height: 340px; }
+        #plants { height: 380px; }
         .chart.hero { height: 400px; }
         .error { color: #8a1c1c; background: #f6dede; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
         details { margin-top: 8px; font-size: 13px; color: var(--v-slate); }
@@ -83,7 +84,7 @@
         </div>
         <div class="card">
             <h2>Plants</h2>
-            <div class="sub">Each bubble is a treatment plant: size shows the population served, colour shows the current level. Click a bubble to select it.</div>
+            <div class="sub" id="plants-sub">Each bubble is a treatment plant: size shows the population served, colour shows the current level. Click a bubble to select a plant, or a state to filter to it.</div>
             <div id="plants" class="chart"></div>
         </div>
     </div>
@@ -100,6 +101,7 @@
 const S = { cfg: null, preset: null, pathogen: null, state: '', plant: '' };
 const charts = {};
 let runId = 0;
+let mapReady = null;
 const C = { teal: '#36786a', dark: '#214c43', deep: '#122d28', lime: '#d7e491', slate: '#666c74', green: '#569770', line: '#dedbd2' };
 
 function tint(hex, amount) {
@@ -142,7 +144,18 @@ const axis = { axisLine: { lineStyle: { color: C.line } }, axisLabel: { color: C
 
 // ---- setup --------------------------------------------------------------
 
+function loadMap() {
+    if (!mapReady) {
+        mapReady = fetch('static/us-states.geojson')
+            .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+            .then(g => { echarts.registerMap('USA', g); return true; })
+            .catch(() => false);
+    }
+    return mapReady;
+}
+
 async function init() {
+    loadMap();
     S.cfg = await getJSON('api/sightline/config', '');
     const cfg = S.cfg;
     document.getElementById('title').textContent = cfg.title;
@@ -324,27 +337,52 @@ async function renderRanking() {
 async function renderPlants() {
     const my = runId;
     try {
-        const data = await getJSON('api/sightline/plants', args());
+        const [data, hasMap] = await Promise.all([getJSON('api/sightline/plants', args()), loadMap()]);
         if (my !== runId) return;
         const rows = data.rows;
         const levels = rows.map(r => r.level).sort((a, b) => a - b);
         const cap = levels.length ? levels[Math.floor(levels.length * 0.95)] || levels[levels.length - 1] : 1;
+        // Alaska and Hawaii sit far from the lower 48, so the map shows the contiguous states only.
+        const inView = r => r.lon > -126 && r.lon < -66 && r.lat > 24 && r.lat < 50;
+        const shown = hasMap ? rows.filter(inView) : rows;
+        const hidden = rows.length - shown.length;
+        document.getElementById('plants-sub').textContent =
+            'Each bubble is a treatment plant: size shows the population served, colour shows the current level. Click a bubble to select a plant, or a state to filter to it.' +
+            (hidden ? ` ${hidden} plant${hidden > 1 ? 's' : ''} in Alaska or Hawaii are not drawn but appear in the ranking.` : '');
         const c = chart('plants');
         c.off('click');
-        c.setOption({
-            grid: { left: 8, right: 16, top: 8, bottom: 56, containLabel: true },
-            tooltip: { formatter: p => `${esc(p.data.name)} (${esc(p.data.state)})<br/>Level: ${level(p.data.value[2])}<br/>Population served: ${num(p.data.population)}` },
-            xAxis: { type: 'value', min: -170, max: -65, show: false },
-            yAxis: { type: 'value', min: 18, max: 72, show: false },
+        const point = r => ({ name: r.name, state: r.state, population: r.population, value: [r.lon, r.lat, r.level, r.population || 0] });
+        const option = {
+            tooltip: { formatter: p => p.componentType === 'geo' ? esc(p.name) : `${esc(p.data.name)} (${esc(p.data.state)})<br/>Level: ${level(p.data.value[2])}<br/>Population served: ${num(p.data.population)}` },
             visualMap: { dimension: 2, min: 0, max: cap || 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, text: ['higher', 'lower'], textStyle: { color: C.slate }, inRange: { color: [C.lime, C.green, C.dark] }, outOfRange: { color: C.deep } },
             series: [{
-                type: 'scatter', cursor: 'pointer',
-                symbolSize: d => Math.max(7, Math.min(30, Math.sqrt(d[3] || 1) / 40)),
-                itemStyle: { opacity: 0.85, borderColor: '#fff', borderWidth: 0.5 },
-                data: rows.map(r => ({ name: r.name, state: r.state, population: r.population, value: [r.lon, r.lat, r.level, r.population || 0] })),
+                type: 'scatter', cursor: 'pointer', zlevel: 2,
+                symbolSize: d => Math.max(7, Math.min(28, Math.sqrt(d[3] || 1) / 40)),
+                itemStyle: { opacity: 0.88, borderColor: '#fff', borderWidth: 0.6 },
+                data: shown.map(point),
             }],
-        }, true);
-        c.on('click', p => { S.state = p.data.state; document.getElementById('state').value = p.data.state; S.plant = p.data.name; refresh(); });
+        };
+        if (hasMap) {
+            option.geo = {
+                map: 'USA', roam: false, silent: false, boundingCoords: [[-125, 49.5], [-66, 24.5]], aspectScale: 0.85,
+                top: 4, bottom: 44, left: 4, right: 4,
+                itemStyle: { areaColor: '#ece9df', borderColor: '#bdb8a8', borderWidth: 0.7 },
+                emphasis: { itemStyle: { areaColor: C.lime }, label: { show: false } },
+                select: { disabled: true },
+                regions: S.state ? [{ name: S.state, itemStyle: { areaColor: C.lime, borderColor: C.dark, borderWidth: 1.2 } }] : [],
+            };
+            option.series[0].coordinateSystem = 'geo';
+        } else {
+            option.grid = { left: 8, right: 16, top: 8, bottom: 56, containLabel: true };
+            option.xAxis = { type: 'value', min: -170, max: -65, show: false };
+            option.yAxis = { type: 'value', min: 18, max: 72, show: false };
+        }
+        c.setOption(option, true);
+        c.on('click', p => {
+            if (p.componentType === 'geo') { S.state = p.name; S.plant = ''; document.getElementById('state').value = p.name; }
+            else { S.state = p.data.state; document.getElementById('state').value = p.data.state; S.plant = p.data.name; }
+            refresh();
+        });
     } catch (e) { showError('plants', e); }
 }
 
