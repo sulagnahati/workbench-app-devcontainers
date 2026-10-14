@@ -9,6 +9,8 @@ services:
     environment:
       # Comma-separated list of project.dataset.table to expose in the dashboard
       BQ_TABLES: "prj-p-1v-s0i.gold_basevalue_lifelong.patient_gold_latest_bv_ll"
+      # Developer pages (tables, LookML explorer) stay off in a deployed app: readers get fixed aggregate dashboards only
+      DEV_TOOLS: "0"
     ports:
       - 8080:8080
     networks:

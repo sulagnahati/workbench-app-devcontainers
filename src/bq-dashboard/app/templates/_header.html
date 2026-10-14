@@ -7,7 +7,9 @@
         <a href="sightline" class="{{ 'active' if active == 'sightline' }}">Wastewater</a>
         <a href="lifelong" class="{{ 'active' if active == 'lifelong' }}">Lifelong funnel</a>
         <span class="spacer"></span>
+        {% if dev_tools %}
         <a href="tables" class="tool {{ 'active' if active == 'tables' }}">Tables</a>
         <a href="lookml" class="tool {{ 'active' if active == 'lookml' }}">LookML explorer</a>
+        {% endif %}
     </nav>
 </div></div>

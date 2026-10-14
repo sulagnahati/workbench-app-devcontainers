@@ -1,6 +1,8 @@
 """End-to-end smoke test: loads every page and calls every data endpoint of a running dashboard server.
 
-Usage: python tools/smoke_test.py [BASE_URL]   (default http://127.0.0.1:8080)
+Usage: python tools/smoke_test.py [BASE_URL] [--external]   (default http://127.0.0.1:8080)
+--external is for a server started with DEV_TOOLS=0: it checks that the developer pages and their data
+endpoints are not reachable, and skips the checks that need them.
 Runs real BigQuery queries, so expect a minute or more. Exit code 1 if any check fails.
 """
 import json
@@ -10,7 +12,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8080").rstrip("/")
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+EXTERNAL = "--external" in sys.argv
+BASE = (ARGS[0] if ARGS else "http://127.0.0.1:8080").rstrip("/")
 results = []
 
 
@@ -49,7 +53,7 @@ def nonempty(key):
 
 
 # pages
-for p in ["", "overview", "sightline", "lifelong", "tables", "lookml"]:
+for p in ["", "overview", "sightline", "lifelong"] + ([] if EXTERNAL else ["tables", "lookml"]):
     check(f"page /{p}", p)
 check("stylesheet", "static/dashboard.css")
 check("map file", "static/us-states.geojson")
@@ -85,11 +89,28 @@ for f in lcfg["filters"]:
     if f["kind"] == "select":
         check(f"lifelong options: {f['name']}", "api/lifelong/values", {"field": f["field"]}, lambda d: (len(d) > 0, f"{len(d)} values"))
 
-# explorer and tables
-fields = check("explorer fields", "api/lookml/fields", expect=lambda d: (len(d["measures"]) > 5, f"{len(d['measures'])} measures"))
-check("explorer query", "api/lookml/query", {"measure": fields["measures"][0]["name"], "dimension": "birth_sex"}, nonempty("rows"))
-tables = check("tables list", "api/tables", expect=lambda d: (len(d) > 0, str(d)))
-check("tables summary", "api/summary", {"table": tables[0]})
+def expect_404(name, path, params=None):
+    status, body, secs = get(path, params)
+    ok = status == 404
+    results.append((ok, name, f"{secs:.1f}s", f"status {status}"))
+    print(f"{'PASS' if ok else 'FAIL'}  {name:<48} {secs:5.1f}s  status {status}")
+
+
+if EXTERNAL:
+    for path in ["tables", "lookml", "api/tables", "api/schema", "api/filters", "api/summary", "api/breakdown",
+                 "api/histogram", "api/timeseries", "api/lookml/fields", "api/lookml/query", "api/lookml/values"]:
+        expect_404(f"developer path hidden: /{path}", path, {"table": "x"})
+    status, body, _ = get("")
+    ok = 'href="tables"' not in body and 'href="lookml"' not in body
+    results.append((ok, "navigation hides developer links", "0.0s", ""))
+    print(f"{'PASS' if ok else 'FAIL'}  navigation hides developer links")
+else:
+    # explorer and tables
+    fields = check("explorer fields", "api/lookml/fields", expect=lambda d: (len(d["measures"]) > 5, f"{len(d['measures'])} measures"))
+    check("explorer query", "api/lookml/query", {"measure": fields["measures"][0]["name"], "dimension": "birth_sex"}, nonempty("rows"))
+    tables = check("tables list", "api/tables", expect=lambda d: (len(d) > 0, str(d)))
+    check("tables summary", "api/summary", {"table": tables[0]})
+
 
 failed = [r for r in results if not r[0]]
 print(f"\n{len(results) - len(failed)} passed, {len(failed)} failed")

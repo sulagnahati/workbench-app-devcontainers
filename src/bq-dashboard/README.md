@@ -36,8 +36,8 @@ Target data: `prj-p-1v-s0i.gold_basevalue_lifelong.*_bv_ll` (prod). Config is in
 
 | File | Purpose |
 |---|---|
-| `docs/ARCHITECTURE_COMPARISON.md` | Final comparison of building with and without LookML, with a recommendation, risks and open questions |
-| `docs/VALIDATION.md` | Test results, polish checklist, and the table for the spike's external-reporting needs |
+| `docs/ARCHITECTURE_COMPARISON.md` | Final comparison of defining dashboards with and without LookML, with a recommendation (LookML as the governed source of definitions), risks and open questions |
+| `docs/VALIDATION.md` | Test results, the polish checklist, and how the dashboards score against the five sponsor-view needs from ONEVERILY-152005 |
 | `docs/DEMO.md` | How to start the dashboards for a demo and what to check |
 | `docs/METRICS.md`, `docs/SIGHTLINE_METRICS.md` | Readable metric definitions, generated from the metrics files |
 | `docs/sightline_profile.md` | Profile of the wastewater datasets |
@@ -47,7 +47,8 @@ Target data: `prj-p-1v-s0i.gold_basevalue_lifelong.*_bv_ll` (prod). Config is in
 
 Run the checks after any change to the dashboards, with the server running:
 `python tools/smoke_test.py http://127.0.0.1:8080` and `python tools/ui_test.py http://127.0.0.1:8080`
-(the second needs `pip install playwright` and `playwright install chromium`).
+(the second needs `pip install playwright` and `playwright install chromium`). To check a deployment-style
+server started with `DEV_TOOLS=0`, add `--external` to the smoke test.
 
 ## Steps taken
 
@@ -76,7 +77,9 @@ Run the checks after any change to the dashboards, with the server running:
 ### Deploying as a Workbench app
 Create a custom app: repository = the fork, branch `add-bq-dashboard`, folder `src/bq-dashboard`.
 The container name must be `application-server`, the network `app-network`, and `.devcontainer.json`
-sits inside the folder (monorepo layout).
+sits inside the folder (monorepo layout). The compose file sets `DEV_TOOLS=0`, which turns off the developer
+pages (`/tables`, `/lookml` and their data endpoints) so that a deployed app offers fixed aggregate dashboards
+only. They stay on when running locally unless `DEV_TOOLS=0` is set.
 
 ## Building a dashboard without LookML
 
@@ -225,8 +228,9 @@ The Looker API options were not tried because API keys could not be obtained in 
 ### 5. Data sensitivity
 - The 50-row patient preview that the tables page used to show has been removed; no page shows
   individual rows.
-- The explorer can group by any non-hidden dimension, so small cells (for example 12 revoked) can
-  appear. Review before wider sharing.
+- The developer explorer can group by any non-hidden dimension, so small cells (for example 12 revoked) can
+  appear. It is off in the deployment configuration (`DEV_TOOLS=0`). The three dashboards still show some small
+  counts (the Lifelong page shows 12 revoked consents); only the member overview hides groups under 11.
 - The app has no authentication of its own. Anyone who can open it sees data via its identity.
 
 ### 6. Performance and cost

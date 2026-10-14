@@ -6,7 +6,7 @@ import threading
 import time
 
 from werkzeug.exceptions import HTTPException
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request
 from flask_cors import CORS
 from google.cloud import bigquery
 
@@ -21,6 +21,11 @@ CORS(app)
 
 TABLES = [t.strip() for t in os.environ.get("BQ_TABLES", "").split(",") if t.strip()]
 CACHE_TTL = int(os.environ.get("CACHE_TTL_SECONDS", "600"))
+# Developer pages (tables, LookML explorer) let a viewer pick any column and filter. They are on for local work
+# and should be switched off (DEV_TOOLS=0) for any deployment that outside readers can reach.
+DEV_TOOLS = os.environ.get("DEV_TOOLS", "1") != "0"
+DEV_PATHS = ("/tables", "/lookml", "/api/tables", "/api/schema", "/api/filters", "/api/summary",
+             "/api/breakdown", "/api/histogram", "/api/timeseries", "/api/lookml/")
 MAX_CATEGORIES = 50
 # Columns that identify individuals: never shown in the preview table
 HIDDEN_COLUMNS = {"id", "pendo_visitor_id", "identifier_system_value_list", "group_id_list"}
@@ -100,6 +105,17 @@ def build_where(table):
 def run(sql, params=None):
     cfg = bigquery.QueryJobConfig(query_parameters=params or [])
     return [dict(r) for r in client().query(sql, job_config=cfg).result()]
+
+
+@app.before_request
+def hide_dev_tools():
+    if not DEV_TOOLS and request.path.startswith(DEV_PATHS):
+        abort(404)
+
+
+@app.context_processor
+def inject_flags():
+    return {"dev_tools": DEV_TOOLS}
 
 
 @app.route("/")

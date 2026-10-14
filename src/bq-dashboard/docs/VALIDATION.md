@@ -2,13 +2,14 @@
 
 Validated on the final build of the `overview-dashboard` branch, on a laptop, with the dashboards reading
 the production patient table and the two wastewater datasets using one person's own Google login.
-Section C must be completed with the external-reporting needs listed in the spike.
+Section C judges the dashboards against the five sponsor-view needs defined in ONEVERILY-152005.
 
 ## A. Automated checks (all passing)
 
 | Suite | What it covers | Result |
 |---|---|---|
 | `tools/smoke_test.py` | Every page and every data endpoint, with real BigQuery queries: 6 pages, styles and map file, the member overview (KPIs, trend, all 8 breakdowns, a drill-down), wastewater (lists, KPIs, variants, trend, ranking by state and plant, plant map), all 14 Lifelong tiles and the 3 filter option lists, the LookML explorer, the tables page | **52 of 52 passed** |
+| `tools/smoke_test.py --external` | The same server started the way the deployment configuration starts it (`DEV_TOOLS=0`): the three dashboards and their data work; the 2 developer pages and 10 of their data endpoints return "not found"; the navigation hides the developer links | **59 of 59 passed** |
 | `tools/ui_test.py` | A real browser: landing-page cards and top navigation; Lifelong dropdown filters (choose, apply on close, reset, trend grain); member overview drill-down and chips; wastewater state and pathogen filters, smoothing, clear filters; no row-level data on the tables page; no JavaScript errors on any page | **27 of 27 passed** |
 
 Response times in the smoke test were low on the day tested: 33 data requests, median 0.6 seconds, slowest
@@ -43,24 +44,28 @@ loaded), and the open filter panel covered the Apply button. Both are fixed and 
 Screenshots of the final pages are in `docs/screenshots/` (kept out of git because they show production
 counts).
 
-## C. Key external-reporting needs from the spike (to complete)
+## C. Sponsor-view needs from the earlier spike (ONEVERILY-152005)
 
-The spike's list was not available when this was written. Fill the first column from the spike, then the
-other two. Pre-filled rows are the needs that the ticket and this work imply, so they are a starting point and
-not a substitute for the spike's own list.
+The spike scored hosting options against five needs. This is how the prototype dashboards score. "Met by
+design" means the prototype is built to meet it but it was not tested on the hosted platform.
 
-| Need (from the spike) | How the dashboards address it | Status | Evidence |
+| Need | What "good" means | Status | Evidence and gaps |
 |---|---|---|---|
-| *[from spike]* | | | |
-| Open a link, sign in, and see the dashboard | Not possible: apps are not shareable yet | **Not met** | Depends on Workbench shared apps |
-| Same numbers as the existing Looker reporting | Lifelong tiles are built from the same LookML but not compared with Looker | **Not verified** | Needs a Looker comparison |
-| Interactive filtering | Filters on all three dashboards | Met | UI tests |
-| Drill from a summary to detail | Overview and wastewater | Met | UI tests |
-| Trend over time | All three dashboards | Met | Smoke and UI tests |
-| Clear definitions of each number | Questions and definitions on the pages; metric documents | Met for the metrics shown; definitions are drafts pending analyst review | `METRICS.md`, `SIGHTLINE_METRICS.md` |
-| Appropriate for an external audience (privacy, access control) | Counts only, small-group rule on one dashboard, no in-app access control | **Partly met** | See open items 9 and 10 in `ARCHITECTURE_COMPARISON.md` |
-| Reasonable speed | Median 0.6 seconds on a good day; slow on bad days | Met on the day tested | Smoke test |
-| Data stays current | Live queries with a 10-minute cache | Met for data; LookML definitions are a copy that must be re-synced | Architecture document, section 3 |
+| **Resourcing** | Analytics can own the dashboard build end to end | **Partly met** | Analysts can own the definitions (metrics file or LookML) and review the documents. All chart, query and deployment code was written by engineering; new chart types and fixing a deployed app need engineers. |
+| **Named external users** | A named person outside Verily can open the board, cannot see other partners' boards, cannot change it | **Not met** | Apps are not shareable. Per the spike, a Workbench reader cannot see another user's running app and each reader would launch their own VM. Reader and Writer sharing was **not tested**. Depends on whether a sponsor may hold a Workbench account. |
+| **Aggregate-only** | Counts and rates only; no person-level rows, no user SQL, no export of the table | **Met by design; untested on the platform** | Fixed aggregate queries; no SQL box; no page shows rows (the old 50-row preview was removed); identifier fields are excluded. The developer pages that let a viewer choose any column are off in the deployment configuration (`DEV_TOOLS=0`, verified by 59 checks). Gaps: the platform does not enforce this and the app queries as the workspace service account; a Writer could edit the app; only the member overview hides groups under 11. |
+| **Scheduled or certified refresh** | Numbers update on a cadence, or a dated frozen render exists | **Not met** | Live queries with a 10-minute cache. No schedule, no frozen render and no "data as of" stamp (the wastewater page shows the latest sample date only). A restart or cache expiry is not a certification. |
+| **Export** | PDF or image of the board; no export of underlying rows | **Not met** | No PDF, image or data export is built. Browser print was not tested. Charts hold only aggregates, so an export of what is on screen would be safe to add. |
+
+### The spike's proofs for Workbench, and where we are
+
+| Proof the spike asked for | Status |
+|---|---|
+| Smallest custom app showing one fixed count, with no SQL box | The dashboards are built and run locally with fixed queries and no SQL box. Running them as a Workbench-hosted app was **not completed**: the app's service account has no data access yet. |
+| Share the workspace as Reader and record what that account sees | **Not done** |
+| Repeat as Writer and record what else it can change | **Not done** |
+| Stop the app, push a change, record what a visitor sees before anyone pulls | **Not formally tested.** In practice the app's repository, branch and folder could not be edited after creation, so a change meant creating a new app. |
+| Can the app emit a PDF; are rows reachable from the page | No PDF is built. No rows are reachable from the dashboards, and the developer pages can be turned off. |
 
 ## D. Known limitations and items for the owner
 

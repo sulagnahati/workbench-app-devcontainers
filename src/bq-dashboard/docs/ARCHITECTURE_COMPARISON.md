@@ -1,39 +1,59 @@
-# Building external dashboards on Workbench: with LookML or without
+# External dashboards on Workbench: LookML-governed definitions versus none
 
-**Status:** draft for review. Findings come from the prototype work only; the shared-app and dbt-chart spike
-findings still need to be merged in (see section 7).
+**Status:** draft for review.
 **Prepared by:** [name]   **Date:** [date]   **Ticket:** [link]
+**Related:** ONEVERILY-152005 (where external dashboards should be hosted: Workbench apps versus dbt Charts),
+ONEVERILY-150812 (Looker scaling, closed), ONEVERILY-151935 (ARI metric definitions).
 
-Written for: product, analytics and engineering leads who need to decide how Verily builds dashboards for
+Written for: product, analytics and engineering leads deciding how Verily defines and builds dashboards for
 external reporting on Workbench.
 
 ---
 
 ## 1. Decision and recommendation
 
-**The decision.** When a team needs an interactive dashboard for external reporting, should it be built from
-existing LookML, or from definitions written for the dashboard without LookML?
+**Where we start.** Workbench custom apps are the chosen place to host external dashboards. This document is
+about the other half of the choice: **where the numbers come from**. Either they are defined in LookML, which
+Verily already uses and reviews, or they are defined separately for each dashboard.
 
-**Recommendation (summary).**
+**Recommendation: any metric shown to an external reader should be defined in LookML.**
 
-1. **Do not make "re-implement LookML inside the app" the long-term path.** It works for a demonstration, but
-   it means maintaining our own copy of Looker's SQL generation, it only covers part of the LookML, and its
-   numbers have not been checked against Looker.
-2. **Where LookML already exists, use Looker as the source of the numbers** (ask Looker for the results, or for
-   the SQL), and use the app only for presentation. This keeps one definition of each metric. It is not yet
-   proven: it needs Looker API access, which we could not obtain during the spike.
-3. **Where no LookML exists, a metrics file owned by analysts is a good, fast option for a small number of
-   dashboards.** It produced a second dashboard with far less effort than the first. It should be treated as
-   a stopgap unless the organisation also decides where definitions will live long term (section 5).
-4. **Nothing here can be shared with external users until Workbench offers shareable apps** and the data-use
-   launch covers the audience. Those two items, not the dashboard technology, decide the timeline.
+- **One governed definition.** A number shown to an outside partner is a commitment. If its definition lives
+  in a reviewed, owned, version-controlled place that internal reporting already uses, then the external
+  number and the internal number cannot quietly disagree. LookML is that place today: the LookML repository
+  holds 40 dashboards, 122 views and 12 models, with code owners and review.
+- **The app presents; it does not redefine.** The Workbench app should show results that come from the
+  LookML definitions, not hold its own copy of the business rules.
+- **Data with no LookML gets LookML first.** For datasets such as the wastewater data, write the LookML (or
+  have the owning analysts do so) before the dashboard goes to an external reader. A metrics file is acceptable
+  as a prototype, as we used it, but it should come with an agreed path to LookML and not become the permanent
+  home of external definitions.
+- **Do not make our own LookML compiler the production path.** The prototype compiler proved the idea and was
+  enough for a demonstration. Maintaining a second interpreter of LookML in the app is the wrong long-term
+  cost. The preferred route is to have Looker produce the numbers (or the SQL) for the app. That route is not
+  yet proven; it needs Looker API access, which we could not get during the spike.
 
-The remaining open questions that could change this recommendation are listed in section 6.
+**What this does not solve.** LookML governs definitions. It does not give external readers access, enforce
+aggregate-only views, certify refreshes or provide export. Those gaps belong to the hosting platform and are
+the critical path to an external launch (section 5).
+
+### What the prototypes proved and did not prove
+
+| Proved | Not proved |
+|---|---|
+| A dashboard can be driven from LookML definitions and look identical to one built without them | That the app's numbers match Looker's |
+| A metrics file produces a good dashboard quickly, with analysts owning the definitions | That Looker can serve the app through its API, at the volume external use would need |
+| All three share one design, navigation and chart library, so they are comparable on architecture | That external readers can sign in and view the dashboard |
+| Automated checks pass on every page and data call (see `VALIDATION.md`) | Behaviour under many users, accessibility, or the hosted Workbench experience |
+
+LookML is also not a complete governance answer by itself. Only 2 of the 14 tiles' measures carry a
+description in LookML (the other 12 borrowed the description of the field they filter on), so readable
+definitions need deliberate writing whichever approach is used.
 
 ## 2. What was built and compared
 
-Three dashboards were built with the same design, navigation and charts, so that stakeholders can judge the
-**architecture** and not the appearance.
+Three dashboards were built with the same design so that stakeholders can judge the **architecture**, not the
+appearance.
 
 | Dashboard | Data | How the numbers are defined |
 |---|---|---|
@@ -41,89 +61,90 @@ Three dashboards were built with the same design, navigation and charts, so that
 | Member overview | Member counts, activity, sign-ups | A metrics file written for this dashboard (no LookML) |
 | Wastewater surveillance | Pathogen levels and SARS-CoV-2 variants from wastewater plants | A metrics file written for this dashboard (no LookML) |
 
-All three read live from BigQuery, show counts and averages only, share one landing page, and can be run from
-one server.
+All three read live from BigQuery, show counts and averages only, share one landing page, and run from one
+server.
 
 ## 3. Side-by-side comparison
 
 | | **A. LookML-backed** (app compiles the LookML) | **B. Metrics file** (no LookML) | **C. Looker as the engine** (not tested) |
 |---|---|---|---|
-| **Development effort** | High at the start: a purpose-built SQL compiler was needed (about 640 lines of code) plus a dashboard reader (about 150) before one tile worked. Each new LookML feature that appears (templating, derived tables, filter syntax) may need more compiler work. | Low once the pattern exists: about 80 to 140 lines of query code and 100 to 130 lines of YAML per dashboard. The second dashboard reused the first one's pattern. New chart types still need engineering. | Expected to be low if API access exists: no compiler, no definitions to write. Unknown until tried. |
-| **Metric consistency** | Definitions are the same ones Looker uses, so they are consistent in principle. But the app interprets them with its own compiler, so results can drift from Looker. **Not yet compared with Looker's numbers.** | Definitions exist only in the metrics file. They are consistent within the dashboard, but nothing links them to other reports or to Looker. A metric defined twice can differ. | Same engine as Looker, so numbers should match. |
-| **Governance** | Definitions already live in the reviewed LookML repository (40 dashboards, 122 views, 12 models; the repo has code owners). The app adds no access rules of its own. | Definitions are reviewed as a pull request on the metrics file. Each entry can record an owner, status and validation, but this is a convention, not enforced. No access rules in the app. | Looker's permissions and row-level rules would apply, which is the strongest governance of the three. |
-| **Maintainability** | Fragile. 6 of the 36 measures in the main view cannot be translated yet, only 14 of 60 data tiles on the dashboard are rebuilt, and each LookML change may need a code change. The app also holds a copy of the LookML that can go stale. | Simple and readable by analysts. But every dashboard still needs its own query module, so it does not yet scale without engineers. | Least code to maintain here; depends on Looker's own upkeep. |
-| **Refresh behaviour** | Data is live (results cached 10 minutes). **Definitions are a copy and do not update when LookML changes** unless someone re-syncs it. The Looker models define 24-hour caching rules (datagroups), so Looker may show results up to a day old while the app shows live ones; whether the Lifelong explore uses them was not checked. | Data is live. Definitions change when the file is changed and the app is redeployed. | Follows whatever is deployed in Looker, including its caching. |
-| **Scalability** | Poor as a general route: each dashboard needs bespoke layout, and the compiler would need to cover far more LookML. Heavy tiles scan about 9 GB per query. | Good for a handful of dashboards, then limited by engineering time for new chart types. A single server with an in-memory cache is enough for demonstrations only. | Scales with Looker; the app stays thin. |
-| **Sharing and access** | Same for all three today: apps are not shareable, and an app's service account needs its own data grant. | Same | Same, plus Looker credentials to store as a secret |
-| **Cost** | Queries are cheap except a few heavy tiles (roughly 10 to 15 cents for a full uncached Lifelong load, assuming standard on-demand BigQuery pricing). | Cheap: 5 to 40 MB per query in the tests. | Looker licensing and query cost already exist. |
+| **Governance** | **Strongest of the tested options.** Definitions already live in the reviewed LookML repository with owners and history, and are shared with internal reporting. The app adds no access rules of its own. | **Weakest.** Definitions live only in the metrics file. Review is by pull request and each entry can record an owner, status and validation, but nothing enforces it, and the definition is not tied to anything else in the company. | **Strongest overall.** Same definitions, and Looker's own permissions and row-level rules can apply. |
+| **Metric consistency** | Same definitions as Looker in principle; but the app interprets them with its own compiler, so results can drift. **Not compared with Looker.** | A metric defined here and elsewhere can differ, and no one would be told. | Same engine as Looker, so numbers should match. |
+| **Development effort** | High at the start: a purpose-built compiler (about 640 lines) plus a dashboard reader (about 150) before one tile worked; each new LookML feature may need more compiler work. | Low once the pattern exists: about 80 to 140 lines of query code and 100 to 130 lines of definitions per dashboard. | Expected low if API access exists: no compiler. Unknown until tried. |
+| **Maintainability** | Fragile: 6 of 36 measures in the main view cannot be translated, 14 of 60 data tiles on the dashboard are rebuilt, and the app holds a copy of the LookML that goes stale. | Readable by analysts, but every dashboard still needs its own query module. | Least code to maintain in the app. |
+| **Refresh behaviour** | Data is live (10-minute cache). **Definitions are a copy and do not update when LookML changes** unless re-synced. The Looker models define 24-hour caching rules, so Looker may show older results than the app; whether the Lifelong explore uses them was not checked. | Data is live. Definitions change with the file and a redeploy. | Follows what is deployed in Looker, including its caching. |
+| **Scalability** | Poor as a general route: bespoke layout per dashboard, compiler coverage must keep growing; heavy tiles scan about 9 GB per query. | Good for a handful of dashboards, then limited by engineering time for new chart types. | Scales with Looker, which carries its own capacity questions (ONEVERILY-150812). |
+| **Cost** | Cheap queries, except a few heavy tiles (roughly 10 to 15 cents for a full uncached Lifelong load at standard on-demand BigQuery pricing). | 5 to 40 MB per query in the tests. | Existing Looker licensing and query cost. |
 
 ## 4. Evidence from the prototypes
 
-- **Coverage of LookML.** The Lifelong dashboard has 74 elements, 60 of them showing data. 14 were rebuilt
-  (23%). In the main LookML view, 30 of 36 measures translate; the other 6 use constructs the compiler does not
-  handle.
-- **LookML descriptions are sparse.** Only 2 of the 14 tiles' measures have a description in LookML. The other
-  12 had to borrow the description of the field they filter on. Stakeholder-readable definitions need
-  deliberate writing in either approach.
+- **Coverage of LookML.** The Lifelong dashboard has 74 elements, 60 showing data; 14 were rebuilt (23%). In the
+  main LookML view, 30 of 36 measures translate.
 - **Metrics files are fast to write when the data is understood.** Profiling the two wastewater datasets
-  needed only a few small queries (the 100 GB table was profiled by scanning about 0.07 GB) and found the join
-  between them, a 100 GB column to avoid, and several data-quality issues.
-  The definitions then went into one short YAML file.
-- **Automated checks.** An API smoke test (52 checks: every page and data endpoint) and a browser test
-  (27 checks: navigation, filters, drill-downs) pass on the final build. See `VALIDATION.md`.
-- **Not measured.** Agreement with Looker's numbers; behaviour under many users; accessibility; the shared-app
-  experience.
+  needed only a few small queries (the 100 GB table was profiled by scanning about 0.07 GB). It found the
+  join between them, a 100 GB column to avoid, and several data-quality issues.
+- **Automated checks.** 52 API checks and 27 browser checks pass in local mode, and 59 checks pass for an
+  external deployment with the developer pages turned off. See `VALIDATION.md`.
+- **Not measured.** Agreement with Looker's numbers; behaviour under many users; accessibility; Looker API
+  performance.
 
-## 5. Why this recommendation
+## 5. The hosting facts that matter more than the definition choice
 
-- **One definition per metric is the main prize.** Approach A gets it by reusing LookML, but it pays for it by
-  keeping a second interpreter that must track Looker. Approach C keeps one definition and one interpreter,
-  which is why it is preferred where LookML exists, once access is available.
-- **Approach B is honest about its limits.** It is quick, readable and owned by analysts, and it is what
-  teams can do today when there is no LookML. Its risk is a second source of definitions. If the organisation
-  expects many such dashboards, a shared place for definitions is needed. Options include writing LookML for
-  the new data so Looker governs it, or adopting a dbt-based semantic layer. The dbt-chart spike should inform
-  this choice (section 7).
-- **The right answer may differ by case.** Use this rule of thumb until the open questions are settled:
-  - LookML exists and the numbers must match Looker: approach C (or A only for a demonstration).
-  - No LookML, small audience, a handful of dashboards: approach B with analyst ownership.
-  - No LookML, many dashboards expected: decide on a shared definition layer first, then build on it.
+These come from the earlier spike (ONEVERILY-152005) and from what the prototypes ran into. They hold
+whichever way definitions are written, and they decide whether an external reader can use any of this.
+
+| Need | What we know | Our prototypes |
+|---|---|---|
+| **Analytics owns the build end to end** | Analysts can own definitions and review. New chart types, deployment and support need engineers. | Partly: analysts own the metrics file or LookML; engineering wrote all chart and query code. |
+| **Named external users** | Per ONEVERILY-152005: a workspace share needs an existing Workbench account for that email; a Reader cannot create apps and cannot see another user's running app; each reader would launch their own VM. Whether a sponsor may hold an account is untested. | **Not met.** We did not test Reader and Writer sharing. |
+| **Aggregate-only** | The platform does not enforce it. The app queries BigQuery as the workspace service account. A Writer can edit an app. | **Met by design, untested on the platform.** Fixed aggregate queries, no SQL box, no page shows rows, and the developer pages (tables, LookML explorer) can be switched off with `DEV_TOOLS=0`, which the deployment configuration sets. |
+| **Scheduled or certified refresh** | Missing as a Workbench feature: live queries while the VM is up, no frozen render, a restart does not pull the latest code. | **Not met.** Live queries with a 10-minute cache. No "data as of" stamp. |
+| **Export (PDF or image)** | No platform PDF. | **Not built.** |
+
+Two practical points from our own deployment attempts match the spike: the app definition could not be edited
+after creation as far as we could tell (a new repository, branch or folder meant creating a new app), and the
+deployed app's service account had no data access until a grant is made. With one VM per reader, cost and
+support grow with the number of sponsors.
+
+**dbt Charts.** The spike looked at it as the alternative host. Because Workbench is the chosen platform, we did
+not pursue it. Two ideas carry over: a dashboard as one readable definition file (our metrics file works the
+same way), and a validation step that fails when a defined column does not exist. The Security question about
+a third party holding a BigQuery credential matters only if the Workbench route falls through.
 
 ## 6. Risks, dependencies and open questions
 
 | # | Item | Why it matters | Suggested owner | Status |
 |---|---|---|---|---|
-| 1 | **Shareable apps do not exist yet** | External users cannot open a link, sign in and see a dashboard. Today the dashboard runs on one person's computer or workspace. | Workbench team | On the roadmap; no date known |
-| 2 | **Data-use launch** | Required before the app's service account can be granted access to the data, and covers who may see what. | Product manager with data owners | Not started |
-| 3 | **Service-account access** | The deployed app returns "access denied" until its identity is granted read access (the wastewater workspace uses an admin-managed group). | Data owners | Not granted |
-| 4 | **Looker API access** | Needed for approach C. Keys could not be obtained during the spike. | Looker admins | Open |
-| 5 | **Numbers not compared with Looker** | Approach A's accuracy is unknown. | Analyst | Open |
-| 6 | **Definitions are drafts** | Questions, the pathogen-level rule (median of the PMMoV-normalised value), zero handling and default date ranges were drafted by the assistant. | Analyst and data owner | Not reviewed |
-| 7 | **Data-quality rules** | The wastewater data has outliers up to about 2 billion copies, a 1970 date, and many zero medians. | Analyst and data owner | Not decided |
-| 8 | **The LookML repository already has five Sightline dashboards** and a Sightline model. Confirm whether they cover the wastewater datasets used here. If so, the "no LookML" premise for that data needs checking, and Looker numbers exist to compare against. | Could change which approach applies and give a ready validation source. | Analytics lead | Open |
-| 9 | **No access control inside the app** | Anyone who can open the app sees the same data through the app's identity; row-level rules from Looker are not reproduced. | Engineering with data owners | Open |
-| 10 | **Small-group protection** | Only the member overview hides groups under 11; the others show aggregated counts without that rule (for example 12 revoked consents). | Product manager with privacy | Open |
-| 11 | **Performance and cost at scale** | One server, in-memory cache, a few 9 GB tiles. Fine for demonstrations. | Engineering | Not tested |
-| 12 | **Alaska and Hawaii** | Three plants are not drawn on the map (they appear in the ranking). | Engineering | Known limitation |
+| 1 | **No shareable apps in Workbench** | An external reader cannot open a link, sign in and see a dashboard. This is the critical path. | Workbench team | On the roadmap, no date |
+| 2 | **Can sponsors hold a Workbench account, and at what role?** | A Reader cannot launch an app or see another's. Without sharing, a custom app does not meet "named external users". | Workbench team, product | Unknown |
+| 3 | **Data-use launch** | Required before the service account is granted data access, and covers who may see what. | Product with data owners | Not started |
+| 4 | **Service-account data access** | The deployed app returns "access denied" until granted. | Data owners | Not granted |
+| 5 | **Looker API access and capacity** | Needed for the preferred route; keys could not be obtained. External use also raises the scaling question from ONEVERILY-150812. | Looker admins | Open |
+| 6 | **Numbers not compared with Looker** | Accuracy of approach A is unknown. | Analyst | Open |
+| 7 | **No certified refresh or export** | An external audience often needs a dated, citable number and a PDF. | Product, engineering | Not built |
+| 8 | **Definitions are drafts** | The wastewater rules (median of the PMMoV-normalised value, zero handling, 12-month window) were drafted by the assistant. | Analyst, data owner | Not reviewed |
+| 9 | **Data-quality rules** | Outliers up to about 2 billion copies, a 1970 date, many zero medians. | Analyst, data owner | Not decided |
+| 10 | **Five Sightline dashboards already exist in the LookML repository**, with a Sightline model. Confirm whether they cover the wastewater datasets. If so, LookML exists for this data, and Looker numbers exist to compare against. | May change which approach applies. | Analytics lead | Open |
+| 11 | **Writers can edit a running app** | Anyone with write access to the workspace can change what the app queries. Aggregate-only depends on controlling that role. | Workbench team, security | Open |
+| 12 | **Small-group protection** | Only the member overview hides groups under 11. The others show counts such as 12 revoked consents. | Product with privacy | Open |
+| 13 | **Support burden** | A hosted app is supported by checking logs on a VM and recreating it to update. That is an analyst or engineer cost per dashboard. | Engineering | Open |
+| 14 | **Performance at scale** | One server, in-memory cache, a few 9 GB tiles. Fine for demonstrations. | Engineering | Not tested |
 
-## 7. Spike inputs still to be merged
+## 7. Next steps (suggested order)
 
-The ticket refers to a Workbench shared-app and dbt-chart spike. Those findings were not available when this
-document was drafted and are **not reflected above**. Please add:
-
-- **Shared-app findings:** what sharing model was evaluated, how authentication and the viewer's identity work,
-  and any constraints or dates.
-- **dbt-chart findings:** what was built, how metrics were defined (dbt models or a semantic layer), the effort
-  it took, and how it compares with approach B.
-- **External-reporting needs evaluated in the spike:** the list used to judge the dashboards. `VALIDATION.md`
-  has a table ready for it.
-
-Once added, revisit the recommendation in section 1, especially the choice of a shared definition layer.
+1. Get an answer on items 1 and 2 (shared apps, sponsor accounts). Nothing external can launch without them.
+2. Start the data-use launch (item 3) and the service-account grant (item 4).
+3. Obtain Looker API access and run a short proof: ask Looker for the SQL or the result of one Lifelong tile and
+   compare it with the app's number. This settles items 5 and 6 and tests the preferred route.
+4. Check the existing Sightline LookML (item 10) before writing anything new for that data.
+5. Have analysts review and own the drafted definitions and data-quality rules (items 8 and 9).
+6. Add a "data as of" date and a PDF export if a sponsor view needs them (item 7).
 
 ## Appendix: where things are
 
-- Dashboards: run from one server (steps in `DEMO.md`); pages `/`, `/overview`, `/sightline`, `/lifelong`.
+- Dashboards: one server, steps in `DEMO.md`. Pages `/`, `/overview`, `/sightline`, `/lifelong`.
 - Definitions: `app/metrics/patient_overview.yml`, `app/metrics/sightline.yml`; readable versions in
-  `docs/METRICS.md` and `docs/SIGHTLINE_METRICS.md`; data profile in `docs/sightline_profile.md`.
-- Tests: `tools/smoke_test.py` (API) and `tools/ui_test.py` (browser); results in `VALIDATION.md`.
+  `METRICS.md` and `SIGHTLINE_METRICS.md`; data profile in `sightline_profile.md`.
+- Tests: `tools/smoke_test.py` (API) and `tools/ui_test.py` (browser); results and the sponsor-view needs table
+  in `VALIDATION.md`.
 - Process for building a dashboard without LookML, with roles: the README, "Building a dashboard without LookML".
