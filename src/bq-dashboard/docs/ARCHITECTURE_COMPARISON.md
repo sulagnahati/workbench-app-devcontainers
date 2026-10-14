@@ -8,6 +8,9 @@ ONEVERILY-150812 (Looker scaling, closed), ONEVERILY-151935 (ARI metric definiti
 Written for: product, analytics and engineering leads deciding how Verily defines and builds dashboards for
 external reporting on Workbench.
 
+**This document is the supporting evidence.** The position for the demo meeting (where the semantic layer lives,
+how it scales, and why analytics owns it) is in `SEMANTIC_LAYER_PROPOSAL.md`.
+
 ---
 
 ## 1. Decision and recommendation
