@@ -22,7 +22,6 @@ CORS(app)
 TABLES = [t.strip() for t in os.environ.get("BQ_TABLES", "").split(",") if t.strip()]
 CACHE_TTL = int(os.environ.get("CACHE_TTL_SECONDS", "600"))
 MAX_CATEGORIES = 50
-PREVIEW_ROWS = 50
 # Columns that identify individuals: never shown in the preview table
 HIDDEN_COLUMNS = {"id", "pendo_visitor_id", "identifier_system_value_list", "group_id_list"}
 
@@ -104,8 +103,13 @@ def run(sql, params=None):
 
 
 @app.route("/")
-def index():
-    return render_template("index.html")
+def home():
+    return render_template("home.html")
+
+
+@app.route("/tables")
+def tables_page():
+    return render_template("tables.html")
 
 
 @app.route("/api/tables")
@@ -192,16 +196,6 @@ def api_timeseries():
         params,
     )
     return jsonify(rows)
-
-
-@app.route("/api/preview")
-def api_preview():
-    table = get_table(request.args.get("table", ""))
-    cols = [f["name"] for f in get_schema(table) if f["name"] not in HIDDEN_COLUMNS]
-    where, params = build_where(table)
-    select = ", ".join(f"CAST(`{c}` AS STRING) AS `{c}`" for c in cols)
-    rows = run(f"SELECT {select} FROM `{table}` {where} LIMIT {PREVIEW_ROWS}", params)
-    return jsonify({"columns": cols, "rows": rows})
 
 
 # ---- LookML-driven explorer and dashboard -----------------------------------

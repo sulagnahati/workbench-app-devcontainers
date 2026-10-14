@@ -79,11 +79,29 @@ class Dashboard:
         expr = c.field_sql(alias, name)
         return c.assemble([f"CAST({expr} AS STRING) AS v"], group="v", order="v", limit=500)
 
+    def _description(self, tile):
+        """LookML description of the tile's first measure, if it has one."""
+        try:
+            alias, _, name = tile["fields"][0].partition(".")
+            view = self.project.view_for_alias(alias)
+            measure = view.measures[name]
+            text = measure.get("description", "")
+            if not text:
+                # fall back to the description of the field the measure filters on
+                pairs = [k for g in measure.get("filters__all", []) for item in g for k in item]
+                if pairs:
+                    target = pairs[0].split(".")[-1]
+                    text = view.dimensions.get(target, {}).get("description", "")
+        except (lk.Unsupported, KeyError, IndexError):
+            return ""
+        return " ".join(text.split())
+
     def config(self):
         return {
             "title": self.title,
             "filters": self.filters,
-            "tiles": [{k: t[k] for k in ("id", "title", "type", "row", "col")} for t in self.tiles],
+            "tiles": [dict({k: t[k] for k in ("id", "title", "type", "row", "col")}, description=self._description(t))
+                      for t in self.tiles],
         }
 
     # ---------------------------------------------------------------------

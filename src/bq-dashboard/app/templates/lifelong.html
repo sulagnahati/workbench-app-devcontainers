@@ -1,56 +1,92 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Lifelong Dashboard</title>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <meta charset="utf-8">
+    <title>Lifelong funnel</title>
+    <link rel="stylesheet" href="static/verily.css">
+    <link rel="stylesheet" href="static/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1300px; margin: 0 auto; }
-        .card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .filters { margin: 16px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-        .filters label { display: flex; flex-direction: column; font-size: 12px; color: #555; }
-        .filters input, .filters select { padding: 6px; min-width: 220px; }
-        .filters select[multiple] { min-width: 260px; }
-        button { padding: 8px 16px; background: #1976d2; color: white; border: 0; border-radius: 4px; cursor: pointer; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-        .grid .wide { grid-column: span 2; }
-        h3 { margin: 0 0 8px 0; font-size: 14px; color: #444; }
-        .kpi { font-size: 2.4em; font-weight: bold; color: #1976d2; min-height: 60px; }
-        .loading { color: #888; }
-        .error { color: #d32f2f; font-size: 13px; background: #ffebee; padding: 8px; border-radius: 4px; }
-        pre { background: #263238; color: #eceff1; padding: 8px; border-radius: 4px; overflow: auto; font-size: 11px; max-height: 260px; }
-        details { margin-top: 6px; font-size: 12px; }
-        .muted { color: #666; font-size: 13px; }
+        .filterbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+        .field { display: flex; flex-direction: column; gap: 4px; position: relative; }
+        .field > .fl { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--v-slate); }
+        .msbtn { padding: 8px 28px 8px 10px; border-radius: 8px; border: 1px solid var(--v-line); background: var(--v-white); font-size: 14px; min-width: 200px; max-width: 280px; text-align: left; cursor: pointer; position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: inherit; color: var(--v-black); }
+        .msbtn::after { content: "\25BE"; position: absolute; right: 10px; top: 8px; color: var(--v-slate); }
+        .mspanel { position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 4px; background: var(--v-white); border: 1px solid var(--v-line); border-radius: 10px; box-shadow: 0 8px 24px rgba(18,45,40,.16); min-width: 280px; max-height: 300px; overflow: auto; padding: 8px 10px; }
+        .mspanel[hidden] { display: none; }
+        .msactions { display: flex; gap: 12px; padding: 2px 0 8px; border-bottom: 1px solid var(--v-line); margin-bottom: 6px; }
+        .msopt { display: flex; gap: 8px; align-items: center; padding: 5px 2px; font-size: 14px; cursor: pointer; }
+        .msopt input { accent-color: var(--v-teal); }
+        .summary { font-size: 13px; color: var(--v-slate); margin: 12px 2px 0; }
+        .summary b { color: var(--v-green-dark); }
+        .kpis { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+        .kpi .label { display: flex; align-items: center; gap: 6px; }
+        .info { display: inline-flex; width: 15px; height: 15px; border-radius: 50%; background: var(--v-line); color: var(--v-slate); font-size: 10px; font-weight: 700; align-items: center; justify-content: center; cursor: help; letter-spacing: 0; text-transform: none; }
+        .chart { height: 320px; }
+        .placeholder { color: var(--v-slate); font-size: 13px; padding: 20px 0; }
+        .defs li { margin: 6px 0; }
+        .defs b { color: var(--v-green-dark); }
     </style>
 </head>
 <body>
+{% with page_title='Lifelong funnel', page_subtitle='Interest and consent steps for the Lifelong study, rebuilt from the Looker dashboard\'s LookML.', active='lifelong' %}{% include '_header.html' %}{% endwith %}
 <div class="container">
-    <h1 id="title">Lifelong Dashboard</h1>
-    <p class="muted">Proof of concept rebuilt from the Looker dashboard's LookML: tiles, filters and measures
-        are read from the LookML files and compiled to BigQuery SQL.
-        <a href="./">Table dashboard</a> | <a href="lookml">LookML explorer</a></p>
 
-    <div class="card filters" id="filters"></div>
-    <div class="grid" id="tiles"></div>
+    <div class="card">
+        <div class="filterbar" id="filterbar"></div>
+        <div class="summary" id="summary"></div>
+    </div>
+
+    <div class="section-title">Interest funnel</div>
+    <div class="kpis" id="kpis-interest"></div>
+    <div class="row two">
+        <div class="card"><h2>Interest breakdown</h2><div class="sub">How eligible members answered the Lifelong interest card</div><div id="t-donut-interest" class="chart"></div></div>
+        <div class="card"><h2>Interest over time</h2><div class="sub" id="sub-interest">Members who said they are interested, by survey date</div><div id="t-line-interest" class="chart"></div></div>
+    </div>
+
+    <div class="section-title">Consent funnel</div>
+    <div class="kpis" id="kpis-consent"></div>
+    <div class="row two">
+        <div class="card"><h2>Consent breakdown</h2><div class="sub">Signed, declined and incomplete (proposed or draft) consents. Each slice is counted separately, so the total can differ from Total Consent Eligible.</div><div id="t-donut-consent" class="chart"></div></div>
+        <div class="card"><h2>Consented over time</h2><div class="sub" id="sub-consent">Members who signed the Lifelong consent, by date consented</div><div id="t-line-consent" class="chart"></div></div>
+    </div>
+
+    <div class="section-title">About these numbers</div>
+    <div class="card">
+        <details open><summary>Definitions (from the LookML)</summary><ul class="defs" id="defs"></ul></details>
+        <details><summary>SQL behind each tile</summary><div id="sqls"></div></details>
+    </div>
 </div>
 
 <script>
 // Relative paths only (no leading slash) so requests work behind the Workbench proxy.
-let config = null;
-let runId = 0;
+const C = { teal: '#36786a', dark: '#214c43', deep: '#122d28', lime: '#d7e491', slate: '#666c74', green: '#569770', line: '#dedbd2' };
+function tint(hex, amount) {
+    const n = parseInt(hex.slice(1), 16);
+    const mix = c => Math.round(c + (255 - c) * amount);
+    return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix).map(v => v.toString(16).padStart(2, '0')).join('');
+}
+const LAYOUT = {
+    kpisInterest: ['Total Lifelong Eligible', 'Lifelong Interest Completion', 'Interest Deferred', 'Lifelong Non-Responders'],
+    kpisConsent: ['Total Consent Eligible', 'Lifelong Consent Completion', 'Lifelong Consent Declined', 'Lifelong Consent Proposed', 'Lifelong Consent Draft', 'Lifelong Consent Revoked'],
+    donutInterest: 'Lifelong Interest Rates', lineInterest: 'Lifelong Interest Over Time',
+    donutConsent: 'Lifelong Consent Rates', lineConsent: 'Lifelong Consented Over Time',
+};
+const DATE_PRESETS = [['', 'Dashboard default'], ['30 days', 'Last 30 days'], ['90 days', 'Last 90 days'], ['365 days', 'Last 12 months'], ['all', 'All time'], ['custom', 'Custom...']];
+const GRAINS = [['date', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Quarter']];
+
+const S = { cfg: null, tiles: {}, controls: {}, runId: 0, charts: {} };
 
 function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-
+const num = v => v === null || v === undefined ? '-' : Number(v).toLocaleString();
 async function getJSON(path, params) {
-    const res = await fetch(`${path}?${params || ''}`);
+    const res = await fetch(`${path}?${params}`);
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
     return body;
 }
-
-// Looker filter expressions use commas between values; quote values that contain one.
 function splitValues(text) {
     const out = [];
     let cur = '', quoted = false;
@@ -62,105 +98,255 @@ function splitValues(text) {
     out.push(cur.trim());
     return out.filter(Boolean);
 }
+function chart(id) {
+    if (!S.charts[id]) { document.getElementById(id).innerHTML = ''; S.charts[id] = echarts.init(document.getElementById(id)); }
+    return S.charts[id];
+}
+function showMessage(id, text, isError) {
+    if (S.charts[id]) { S.charts[id].dispose(); delete S.charts[id]; }
+    document.getElementById(id).innerHTML = `<div class="${isError ? 'error' : 'placeholder'}">${esc(text)}</div>`;
+}
 
-async function loadOptions(select, f) {
-    // The defaults are already shown and selected; add the other values once they arrive,
-    // keeping whatever the user has selected in the meantime.
-    try {
-        const values = await getJSON('api/lifelong/values', new URLSearchParams({ field: f.field }));
-        const chosen = [...select.selectedOptions].map(o => o.value);
-        const all = [...new Set([...chosen, ...values])];
-        select.innerHTML = all.map(v => `<option value="${esc(v)}" ${chosen.includes(v) ? 'selected' : ''}>${esc(v)}</option>`).join('');
-    } catch (e) {
-        // keep the defaults if the list can't be loaded
+// ---- filters --------------------------------------------------------------
+
+function fieldWrap(label, inner) {
+    const w = document.createElement('div');
+    w.className = 'field';
+    const l = document.createElement('span');
+    l.className = 'fl';
+    l.textContent = label;
+    w.append(l, inner);
+    return w;
+}
+
+// Checkbox dropdown: a plain click toggles one value, so nothing is lost by accident.
+function multiSelect(f, label) {
+    const selected = new Set(splitValues(f.default));
+    let options = [...selected];
+    let dirty = false;   // selection changed since the panel was opened
+    const root = document.createElement('div');
+    root.style.position = 'relative';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'msbtn';
+    const panel = document.createElement('div');
+    panel.className = 'mspanel';
+    panel.hidden = true;
+    const text = () => !selected.size ? 'All' : selected.size <= 2 ? [...selected].join(', ') : `${selected.size} selected`;
+    function render() {
+        btn.textContent = text();
+        panel.innerHTML = '<div class="msactions"><button type="button" class="linkbtn" data-a="all">Select all</button><button type="button" class="linkbtn" data-a="none">Clear</button></div>';
+        options.forEach(v => {
+            const row = document.createElement('label');
+            row.className = 'msopt';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = selected.has(v);
+            cb.onchange = () => { cb.checked ? selected.add(v) : selected.delete(v); dirty = true; btn.textContent = text(); };
+            row.append(cb, document.createTextNode(v));
+            panel.append(row);
+        });
+        panel.querySelector('[data-a=all]').onclick = () => { options.forEach(v => selected.add(v)); dirty = true; render(); };
+        panel.querySelector('[data-a=none]').onclick = () => { selected.clear(); dirty = true; render(); };
     }
+    // Closing the panel applies a changed selection, so the user does not also have to press Apply.
+    const close = () => {
+        if (panel.hidden) return;
+        panel.hidden = true;
+        if (dirty) { dirty = false; refresh(); }
+    };
+    root.closePanel = close;
+    btn.onclick = e => {
+        e.stopPropagation();
+        document.querySelectorAll('.field > div').forEach(r => { if (r !== root && r.closePanel) r.closePanel(); });
+        if (panel.hidden) panel.hidden = false; else close();
+    };
+    panel.onclick = e => e.stopPropagation();
+    document.addEventListener('click', close);
+    root.append(btn, panel);
+    render();
+    getJSON('api/lifelong/values', new URLSearchParams({ field: f.field }))
+        .then(values => { options = [...new Set([...selected, ...values])]; render(); })
+        .catch(() => {});
+    const wrap = fieldWrap(label, root);
+    wrap.get = () => [...selected].map(v => v.includes(',') ? `"${v}"` : v).join(',');
+    wrap.reset = () => { selected.clear(); splitValues(f.default).forEach(v => selected.add(v)); dirty = false; render(); };
+    return wrap;
+}
+
+function selectField(label, pairs, value) {
+    const sel = document.createElement('select');
+    sel.innerHTML = pairs.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    sel.value = value;
+    const wrap = fieldWrap(label, sel);
+    wrap.sel = sel;
+    return wrap;
+}
+
+function buildFilters() {
+    const bar = document.getElementById('filterbar');
+    const byField = Object.fromEntries(S.cfg.filters.map(f => [f.field.split('.')[1], f]));
+    const add = (key, el) => { S.controls[key] = el; bar.append(el); };
+    if (byField.organization_compartment_name) add('org', multiSelect(byField.organization_compartment_name, 'Organization'));
+    if (byField.verily_me_account_status) add('status', multiSelect(byField.verily_me_account_status, 'Account status'));
+    if (byField.cohort_eligibility) add('cohort', multiSelect(byField.cohort_eligibility, 'Cohort'));
+
+    const dateF = byField.created_at_date;
+    if (dateF) {
+        const presets = [['', `Dashboard default (${dateF.default || 'all'})`], ...DATE_PRESETS.slice(1)];
+        const w = selectField('Member created', presets, '');
+        const custom = document.createElement('input');
+        custom.type = 'text';
+        custom.placeholder = 'after 2026/01/01';
+        custom.style.display = 'none';
+        custom.style.marginTop = '4px';
+        w.append(custom);
+        w.sel.onchange = () => { custom.style.display = w.sel.value === 'custom' ? 'block' : 'none'; };
+        w.get = () => w.sel.value === '' ? dateF.default : w.sel.value === 'all' ? '' : w.sel.value === 'custom' ? custom.value.trim() : w.sel.value;
+        w.reset = () => { w.sel.value = ''; custom.value = ''; custom.style.display = 'none'; };
+        add('date', w);
+    }
+    const grainF = byField.global_time_grain_selector;
+    if (grainF) {
+        const w = selectField('Trend grain', GRAINS, grainF.default || 'date');
+        w.get = () => w.sel.value;
+        w.reset = () => { w.sel.value = grainF.default || 'date'; };
+        add('grain', w);
+    }
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:8px;align-items:flex-end';
+    const apply = document.createElement('button');
+    apply.className = 'primary';
+    apply.textContent = 'Apply';
+    apply.onclick = refresh;
+    const reset = document.createElement('button');
+    reset.className = 'secondary';
+    reset.textContent = 'Reset';
+    reset.onclick = () => { Object.values(S.controls).forEach(c => c.reset && c.reset()); refresh(); };
+    btns.append(apply, reset);
+    bar.append(btns);
 }
 
 function currentFilters() {
+    const byField = Object.fromEntries(S.cfg.filters.map(f => [f.field.split('.')[1], f.name]));
     const out = {};
-    document.querySelectorAll('[data-filter]').forEach(el => {
-        if (el.multiple) {
-            out[el.dataset.filter] = [...el.selectedOptions].map(o => o.value.includes(',') ? `"${o.value}"` : o.value).join(',');
-        } else {
-            out[el.dataset.filter] = el.value.trim();
-        }
-    });
+    const put = (field, key) => { if (byField[field] && S.controls[key]) out[byField[field]] = S.controls[key].get(); };
+    put('organization_compartment_name', 'org');
+    put('verily_me_account_status', 'status');
+    put('cohort_eligibility', 'cohort');
+    put('created_at_date', 'date');
+    put('global_time_grain_selector', 'grain');
     return out;
 }
 
-async function init() {
-    config = await getJSON('api/lifelong/config');
-    document.getElementById('title').textContent = config.title || 'Lifelong Dashboard';
-    const box = document.getElementById('filters');
-    for (const f of config.filters) {
-        const label = document.createElement('label');
-        label.textContent = f.name;
-        let input;
-        if (f.kind === 'grain') {
-            input = document.createElement('select');
-            input.innerHTML = ['date', 'week', 'month', 'quarter'].map(v => `<option value="${v}">${v}</option>`).join('');
-            input.value = f.default;
-        } else if (f.kind === 'select') {
-            input = document.createElement('select');
-            input.multiple = true;
-            input.size = 4;
-            input.innerHTML = splitValues(f.default).map(v => `<option value="${esc(v)}" selected>${esc(v)}</option>`).join('');
-            loadOptions(input, f);
-        } else {
-            input = document.createElement('input');
-            input.value = f.default;
-        }
-        input.dataset.filter = f.name;
-        label.appendChild(input);
-        box.appendChild(label);
-    }
-    const btn = document.createElement('button');
-    btn.textContent = 'Update';
-    btn.onclick = refresh;
-    box.appendChild(btn);
+function renderSummary() {
+    const c = S.controls;
+    const part = (label, el) => `<b>${esc(label)}:</b> ${el && el.get() ? esc(splitValues(el.get()).join(', ')) : 'all'}`;
+    const date = c.date ? `<b>Created:</b> ${esc(c.date.get() || 'all time')}` : '';
+    document.getElementById('summary').innerHTML =
+        [part('Organization', c.org), part('Status', c.status), part('Cohort', c.cohort), date].filter(Boolean).join(' &nbsp;&middot;&nbsp; ');
+    const grain = c.grain ? c.grain.sel.selectedOptions[0].textContent.toLowerCase() : 'day';
+    document.getElementById('sub-interest').textContent = `Members who said they are interested, by survey date (grouped by ${grain})`;
+    document.getElementById('sub-consent').textContent = `Members who signed the Lifelong consent, by date consented (grouped by ${grain})`;
+}
 
-    const tiles = [...config.tiles].sort((a, b) => a.row - b.row || a.col - b.col);
-    document.getElementById('tiles').innerHTML = tiles.map(t =>
-        `<div class="card ${t.type === 'donut' || t.type === 'line' ? 'wide' : ''}">
-            <h3>${esc(t.title)}</h3><div id="tile-${t.id}" class="loading">Loading...</div>
-            <details><summary>SQL</summary><pre id="sql-${t.id}"></pre></details></div>`).join('');
-    refresh();
+// ---- tiles ----------------------------------------------------------------
+
+function kpiCard(t) {
+    const info = t.description ? `<span class="info" title="${esc(t.description)}">i</span>` : '';
+    return `<div class="card kpi"><div class="label">${esc(t.title)}${info}</div><div class="value" id="kpi-${t.id}">…</div></div>`;
+}
+
+const pretty = l => l.replace(/^Count Lifelong /, '').replace('Nonresponders', 'Non-responders').replace('Interest Deferred', 'Deferred')
+    .replace('Signed Consents', 'Signed').replace('Declined Consents', 'Declined').replace('Consent Incomplete', 'Incomplete')
+    .replace(/^./, c => c.toUpperCase());
+const SLICE_COLORS = { Interested: C.dark, Deferred: C.lime, 'Non-responders': tint(C.slate, .55), Signed: C.dark, Declined: C.slate, Incomplete: C.lime };
+
+function drawDonut(id, data, unit) {
+    const slices = data.slices.map(s => ({ name: pretty(s.label), value: s.value || 0 }));
+    const total = slices.reduce((a, s) => a + s.value, 0);
+    if (!total) { showMessage(id, 'No data for these filters', false); return; }
+    chart(id).setOption({
+        color: slices.map(s => SLICE_COLORS[s.name] || C.teal),
+        tooltip: { trigger: 'item', formatter: p => `${esc(p.name)}<br/><b>${num(p.value)}</b> (${p.percent}%)` },
+        legend: { bottom: 0, textStyle: { color: C.slate } },
+        title: { text: num(total), subtext: unit, left: 'center', top: '34%', textStyle: { fontSize: 26, fontWeight: 700, color: C.dark }, subtextStyle: { color: C.slate } },
+        series: [{
+            type: 'pie', radius: ['54%', '76%'], center: ['50%', '45%'], avoidLabelOverlap: true,
+            itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 4 },
+            label: { formatter: p => `${p.percent}%`, color: C.slate, fontWeight: 600 }, labelLine: { length: 8, length2: 6 },
+            emphasis: { scaleSize: 6 }, data: slices,
+        }],
+    }, true);
+}
+
+function drawLine(id, data, color) {
+    if (!data.points.length) { showMessage(id, 'No data for these filters', false); return; }
+    chart(id).setOption({
+        grid: { left: 8, right: 16, top: 16, bottom: 56, containLabel: true },
+        tooltip: { trigger: 'axis', valueFormatter: num },
+        xAxis: { type: 'category', data: data.points.map(p => p.x), boundaryGap: false, axisLine: { lineStyle: { color: C.line } }, axisLabel: { color: C.slate, hideOverlap: true } },
+        yAxis: { type: 'value', axisLabel: { color: C.slate }, splitLine: { lineStyle: { color: '#eeece6' } } },
+        dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 6, borderColor: 'transparent' }],
+        series: [{ type: 'line', name: data.label, smooth: 0.15, showSymbol: false, lineStyle: { width: 2.5, color }, itemStyle: { color }, areaStyle: { color, opacity: 0.14 }, data: data.points.map(p => p.y) }],
+    }, true);
+}
+
+const TARGETS = {
+    'Lifelong Interest Rates': 't-donut-interest', 'Lifelong Consent Rates': 't-donut-consent',
+    'Lifelong Interest Over Time': 't-line-interest', 'Lifelong Consented Over Time': 't-line-consent',
+};
+
+async function loadTile(t, filters, my) {
+    const isKpi = t.type === 'single_value';
+    try {
+        const data = await getJSON('api/lifelong/tile', new URLSearchParams({ id: t.id, filters }));
+        if (my !== S.runId) return;
+        const sql = document.getElementById(`sql-${t.id}`);
+        if (sql) sql.textContent = data.sql;
+        if (isKpi) document.getElementById(`kpi-${t.id}`).textContent = num(data.value);
+        else if (t.title === LAYOUT.donutInterest) drawDonut(TARGETS[t.title], data, 'eligible');
+        else if (t.title === LAYOUT.donutConsent) drawDonut(TARGETS[t.title], data, 'in consent');
+        else if (t.title === LAYOUT.lineInterest) drawLine(TARGETS[t.title], data, C.teal);
+        else if (t.title === LAYOUT.lineConsent) drawLine(TARGETS[t.title], data, C.dark);
+    } catch (e) {
+        if (my !== S.runId) return;
+        if (isKpi) {
+            const el = document.getElementById(`kpi-${t.id}`);
+            if (el) { el.textContent = '-'; el.title = e.message; }
+        } else if (TARGETS[t.title]) {
+            showMessage(TARGETS[t.title], e.message, true);
+        }
+    }
 }
 
 function refresh() {
+    renderSummary();
+    S.runId++;
     const filters = JSON.stringify(currentFilters());
-    const my = ++runId;
-    for (const t of config.tiles) drawTile(t, filters, my);
+    document.querySelectorAll('.kpi .value').forEach(el => { el.textContent = '…'; el.title = ''; });
+    Object.values(TARGETS).forEach(id => showMessage(id, 'Loading...', false));
+    Object.values(S.tiles).forEach(t => loadTile(t, filters, S.runId));
 }
 
-async function drawTile(t, filters, my) {
-    const el = document.getElementById(`tile-${t.id}`);
-    el.className = 'loading';
-    el.textContent = 'Loading...';
-    try {
-        const data = await getJSON('api/lifelong/tile', new URLSearchParams({ id: t.id, filters }));
-        if (my !== runId) return;
-        document.getElementById(`sql-${t.id}`).textContent = data.sql;
-        el.className = '';
-        el.innerHTML = '';
-        if (data.type === 'single_value') {
-            el.className = 'kpi';
-            el.textContent = data.value === null ? '-' : Number(data.value).toLocaleString();
-        } else if (data.type === 'donut') {
-            Plotly.newPlot(el, [{ type: 'pie', hole: 0.5, labels: data.slices.map(s => s.label), values: data.slices.map(s => s.value) }],
-                { margin: { t: 10, b: 10 }, height: 260 }, { responsive: true });
-        } else {
-            Plotly.newPlot(el, [{ type: 'scatter', mode: 'lines', x: data.points.map(p => p.x), y: data.points.map(p => p.y), line: { color: '#1976d2' } }],
-                { margin: { t: 10 }, height: 260, yaxis: { title: data.label } }, { responsive: true });
-        }
-    } catch (e) {
-        if (my !== runId) return;
-        el.className = 'error';
-        el.textContent = e.message;
-    }
+async function init() {
+    S.cfg = await getJSON('api/lifelong/config', '');
+    S.cfg.tiles.forEach(t => { S.tiles[t.title] = t; });
+    buildFilters();
+    const place = (id, titles) => { document.getElementById(id).innerHTML = titles.map(n => S.tiles[n] ? kpiCard(S.tiles[n]) : '').join(''); };
+    place('kpis-interest', LAYOUT.kpisInterest);
+    place('kpis-consent', LAYOUT.kpisConsent);
+    const groups = {};
+    S.cfg.tiles.filter(t => t.description).forEach(t => { (groups[t.description] = groups[t.description] || []).push(t.title); });
+    document.getElementById('defs').innerHTML = Object.entries(groups)
+        .map(([d, titles]) => `<li><b>${esc(titles.join(', '))}.</b> ${esc(d)}</li>`).join('');
+    document.getElementById('sqls').innerHTML = S.cfg.tiles
+        .map(t => `<details><summary>${esc(t.title)}</summary><pre id="sql-${t.id}"></pre></details>`).join('');
+    window.addEventListener('resize', () => Object.values(S.charts).forEach(c => c.resize()));
+    refresh();
 }
 
-init().catch(e => { document.getElementById('tiles').innerHTML = `<div class="error">${esc(e.message)}</div>`; });
+init().catch(e => { document.querySelector('.container').insertAdjacentHTML('afterbegin', `<div class="error">${esc(e.message)}</div>`); });
 </script>
 </body>
 </html>

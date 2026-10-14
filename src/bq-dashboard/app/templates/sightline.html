@@ -4,50 +4,19 @@
     <meta charset="utf-8">
     <title>Wastewater Surveillance</title>
     <link rel="stylesheet" href="static/verily.css">
+    <link rel="stylesheet" href="static/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; margin: 0; background: var(--v-offwhite); color: var(--v-black); }
-        .top { background: var(--v-green-dark); color: var(--v-white); }
-        .top .inner { max-width: 1260px; margin: 0 auto; padding: 24px 24px 20px; }
-        .top h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .01em; }
-        .top p { margin: 0; color: var(--v-lime); font-size: 14px; }
-        .top nav { margin-top: 10px; font-size: 13px; }
-        .top nav a { color: var(--v-white); opacity: .8; text-decoration: none; margin-right: 16px; }
-        .top nav a:hover { opacity: 1; }
-        .container { max-width: 1260px; margin: 0 auto; padding: 20px 24px 48px; }
-        .controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; margin-bottom: 14px; }
-        .controls label { display: flex; flex-direction: column; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--v-slate); gap: 4px; }
-        select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--v-line); background: var(--v-white); font-size: 14px; min-width: 190px; color: var(--v-black); }
-        .card { background: var(--v-white); border-radius: 12px; padding: 18px 20px; border: 1px solid var(--v-line); }
-        .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
-        .kpi .label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--v-slate); }
-        .kpi .value { font-size: 32px; font-weight: 700; margin-top: 6px; color: var(--v-green-dark); letter-spacing: -0.01em; }
-        .kpi .hint { font-size: 12px; color: var(--v-slate); margin-top: 2px; min-height: 16px; }
-        .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 34px; margin-bottom: 12px; font-size: 13px; color: var(--v-slate); }
-        .chip { background: var(--v-lime); color: var(--v-green-deep); border-radius: 999px; padding: 5px 6px 5px 12px; display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
-        .chip button { border: 0; background: rgba(18,45,40,.15); color: var(--v-green-deep); border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
-        .linkbtn { border: 0; background: none; color: var(--v-teal); cursor: pointer; font-size: 13px; font-weight: 600; }
-        .row { display: grid; gap: 14px; margin-bottom: 14px; }
-        .two { grid-template-columns: 1fr 1fr; }
-        h2 { font-size: 16px; margin: 0 0 2px; color: var(--v-green-dark); }
-        .sub { font-size: 12px; color: var(--v-slate); margin-bottom: 8px; }
-        .chart { width: 100%; height: 340px; }
+        .controls { margin-bottom: 4px; }
+        .kpis { grid-template-columns: repeat(4, 1fr); }
         #plants { height: 380px; }
+        .smooth { font-size: 12px; color: var(--v-slate); display: flex; gap: 6px; align-items: center; margin-bottom: 6px; cursor: pointer; }
+        .smooth input { accent-color: var(--v-teal); }
         .chart.hero { height: 400px; }
-        .error { color: #8a1c1c; background: #f6dede; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
-        details { margin-top: 8px; font-size: 13px; color: var(--v-slate); }
-        details li { margin: 4px 0; }
-        pre { background: var(--v-green-deep); color: var(--v-offwhite); padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
-        @media (max-width: 900px) { .kpis, .two { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
-<div class="top"><div class="inner">
-    <h1 id="title">Wastewater Surveillance</h1>
-    <p id="description"></p>
-    <nav><a href="./">Table dashboard</a><a href="overview">Member overview</a><a href="lifelong">Lifelong dashboard</a></nav>
-</div></div>
+{% with page_title='Wastewater surveillance', page_subtitle='Pathogen levels and SARS-CoV-2 variant mix from wastewater treatment plants.', active='sightline' %}{% include '_header.html' %}{% endwith %}
 
 <div class="container">
     <div class="controls">
@@ -67,6 +36,7 @@
     <div class="row"><div class="card">
         <h2>SARS-CoV-2 variant mix</h2>
         <div class="sub" id="variant-sub">Share of each lineage by week. Click a name in the legend to hide or show it.</div>
+        <label class="smooth"><input type="checkbox" id="smooth"> Smooth with a 3-week average (easier to read; weekly values can swing when few samples are collected)</label>
         <div id="variants" class="chart hero"></div>
     </div></div>
 
@@ -175,6 +145,7 @@ async function init() {
     const state = document.getElementById('state');
     state.onchange = () => { S.state = state.value; S.plant = ''; refresh(); };
 
+    document.getElementById('smooth').onchange = () => renderVariants();
     window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
     refresh();
     loadLists();
@@ -242,13 +213,19 @@ async function renderVariants() {
             by[name][r.d] = (by[name][r.d] || 0) + r.share;
         });
         const names = [...keep, ...(by.Other ? ['Other'] : [])];
+        const smooth = document.getElementById('smooth').checked;
+        const valueAt = (n, i) => {
+            if (!smooth) return by[n]?.[weeks[i]] ?? 0;
+            const win = [i - 1, i, i + 1].filter(j => j >= 0 && j < weeks.length);
+            return win.reduce((a, j) => a + (by[n]?.[weeks[j]] ?? 0), 0) / win.length;
+        };
         const latest = weeks[weeks.length - 1];
         const lead = keep.slice().sort((a, b) => (by[b]?.[latest] || 0) - (by[a]?.[latest] || 0))[0];
         document.getElementById('kpi-variant').textContent = lead || '-';
         document.getElementById('hint-variant').textContent = lead ? `${((by[lead][latest] || 0) * 100).toFixed(0)}% of samples, week of ${latest}` : 'No samples in this period';
         chart('variants').setOption({
             color: names.map((n, i) => n === 'Other' ? OTHER_COLOR : LINEAGE_COLORS[i % LINEAGE_COLORS.length]),
-            grid: { left: 8, right: 16, top: 40, bottom: 52, containLabel: true },
+            grid: { left: 8, right: 34, top: 40, bottom: 52, containLabel: true },
             legend: { top: 0, type: 'scroll', textStyle: { color: C.slate } },
             tooltip: { trigger: 'axis', valueFormatter: v => `${(v * 100).toFixed(1)}%`, order: 'valueDesc' },
             xAxis: { type: 'category', data: weeks, boundaryGap: false, ...axis, splitLine: { show: false } },
@@ -257,7 +234,7 @@ async function renderVariants() {
             series: names.map(n => ({
                 name: n, type: 'line', stack: 'share', smooth: 0.2, showSymbol: false, lineStyle: { width: 0.5 },
                 areaStyle: { opacity: 0.92 }, emphasis: { focus: 'series' },
-                data: weeks.map(w => by[n]?.[w] ?? 0),
+                data: weeks.map((w, i) => valueAt(n, i)),
             })),
         }, true);
         document.getElementById('sql').textContent = data.sql;
@@ -299,7 +276,7 @@ async function renderTrend() {
             series.push({ name: 'All plants', type: 'line', smooth: 0.2, showSymbol: false, lineStyle: { width: 2, type: 'dashed', color: C.slate }, itemStyle: { color: C.slate }, data: weeks.map(w => byWeek[w] ?? null) });
         }
         chart('trend').setOption({
-            grid: { left: 8, right: 16, top: 36, bottom: 56, containLabel: true },
+            grid: { left: 8, right: 34, top: 36, bottom: 56, containLabel: true },
             legend: { top: 0, right: 0, textStyle: { color: C.slate } },
             tooltip: { trigger: 'axis', valueFormatter: level },
             xAxis: { type: 'category', data: weeks, boundaryGap: false, ...axis, splitLine: { show: false } },
@@ -354,11 +331,11 @@ async function renderPlants() {
         const point = r => ({ name: r.name, state: r.state, population: r.population, value: [r.lon, r.lat, r.level, r.population || 0] });
         const option = {
             tooltip: { formatter: p => p.componentType === 'geo' ? esc(p.name) : `${esc(p.data.name)} (${esc(p.data.state)})<br/>Level: ${level(p.data.value[2])}<br/>Population served: ${num(p.data.population)}` },
-            visualMap: { dimension: 2, min: 0, max: cap || 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, text: ['higher', 'lower'], textStyle: { color: C.slate }, inRange: { color: [C.lime, C.green, C.dark] }, outOfRange: { color: C.deep } },
+            visualMap: { dimension: 2, min: 0, max: cap || 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, text: ['higher', 'lower'], formatter: v => level(v), textStyle: { color: C.slate }, inRange: { color: [C.lime, C.green, C.dark] }, outOfRange: { color: C.deep } },
             series: [{
                 type: 'scatter', cursor: 'pointer', zlevel: 2,
                 symbolSize: d => Math.max(7, Math.min(28, Math.sqrt(d[3] || 1) / 40)),
-                itemStyle: { opacity: 0.88, borderColor: '#fff', borderWidth: 0.6 },
+                itemStyle: { opacity: 0.92, borderColor: C.dark, borderWidth: 0.8 },
                 data: shown.map(point),
             }],
         };
@@ -367,9 +344,9 @@ async function renderPlants() {
                 map: 'USA', roam: false, silent: false, boundingCoords: [[-125, 49.5], [-66, 24.5]], aspectScale: 0.85,
                 top: 4, bottom: 44, left: 4, right: 4,
                 itemStyle: { areaColor: '#ece9df', borderColor: '#bdb8a8', borderWidth: 0.7 },
-                emphasis: { itemStyle: { areaColor: C.lime }, label: { show: false } },
+                emphasis: { itemStyle: { areaColor: tint(C.teal, .8) }, label: { show: false } },
                 select: { disabled: true },
-                regions: S.state ? [{ name: S.state, itemStyle: { areaColor: C.lime, borderColor: C.dark, borderWidth: 1.2 } }] : [],
+                regions: S.state ? [{ name: S.state, itemStyle: { areaColor: tint(C.teal, .72), borderColor: C.dark, borderWidth: 1.4 } }] : [],
             };
             option.series[0].coordinateSystem = 'geo';
         } else {

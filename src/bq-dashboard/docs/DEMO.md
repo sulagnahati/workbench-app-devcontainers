@@ -17,16 +17,18 @@ uncached load).
    ```
    Wait for `Running on http://127.0.0.1:8080`. The prompt does not come back; that is normal.
 3. Open each page once and wait for it to fill in (the first load can take a while):
-   - http://localhost:8080/lifelong
+   - http://localhost:8080/ (landing page with a card for each dashboard)
    - http://localhost:8080/overview
    - http://localhost:8080/sightline
+   - http://localhost:8080/lifelong
 4. If a page shows a permissions error, your Google login has expired: run
    `gcloud auth application-default login` in another terminal and reload.
 
 ## What to check on each page
 
-- **Lifelong:** Organization dropdown has both organizations selected (use Cmd-click to change). Total Lifelong
-  Eligible is about 42,000 with the default filters (numbers move as the data refreshes).
+- **Lifelong:** Organization dropdown shows both organizations selected; click it, tick or untick a box and
+  click anywhere else to apply. Total Lifelong Eligible is about 42,000 with the default filters (numbers move
+  as the data refreshes). "Reset" returns to the defaults.
 - **Overview:** the cards show numbers; click a bar in "Members" and a filter chip appears; remove it with the x.
 - **Sightline:** the variant chart fills in, the trend line draws, clicking a state bar or a state on the map adds
   a state chip.
@@ -35,6 +37,11 @@ uncached load).
 
 Press `Ctrl+C` in the server window and close it. Nothing else needs to be turned off, except the Workbench
 app you created earlier if it is still running (it costs money while it runs; check the Apps list).
+
+## Quick self-test (optional)
+
+With the server running, `python tools/smoke_test.py http://127.0.0.1:8080` checks every page and data call
+(about a minute). All checks should pass.
 
 ## If something looks wrong
 

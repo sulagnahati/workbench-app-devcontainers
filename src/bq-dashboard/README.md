@@ -11,11 +11,12 @@ end to end inside Workbench (see "Outstanding issues").
 
 | Page | What it shows |
 |---|---|
-| `/` | Generic dashboard over the tables in `BQ_TABLES` (filters, charts, 50-row preview) |
-| `/lifelong` | 14 interest and consent funnel tiles from the Lifelong dashboard, with its default filters (built from LookML) |
+| `/` | Landing page: one card per dashboard, and what each is built from |
 | `/overview` | Member overview: KPIs, sign-up trend, drill-down by organization, program, state, age and sex (built from a metrics file, no LookML) |
 | `/sightline` | Wastewater surveillance: SARS-CoV-2 variant mix, pathogen levels, state and plant drill-down, plant map (built from a metrics file, no LookML) |
-| `/lookml` | Explorer: pick a measure and a dimension from the `patient_gold_latest` view; shows generated SQL |
+| `/lifelong` | Lifelong funnel: 14 interest and consent tiles with the Looker dashboard's default filters (built from LookML) |
+| `/tables` | Developer view: counts and distributions per column of a table (aggregates only) |
+| `/lookml` | Developer view: pick a measure and a dimension from a LookML view; shows the generated SQL |
 
 Two ways of defining a dashboard are shown side by side. `/lifelong` reads existing LookML and compiles it to
 SQL. `/overview` and `/sightline` read a small metrics file (`app/metrics/*.yml`) written for the dashboard.
@@ -30,6 +31,23 @@ How `/lifelong` works:
 
 Target data: `prj-p-1v-s0i.gold_basevalue_lifelong.*_bv_ll` (prod). Config is in `docker-compose.yaml`
 (`BQ_TABLES`); the model name defaults to `basevalue_lifelong_data`, the explore the dashboard uses.
+
+## Documents and tests
+
+| File | Purpose |
+|---|---|
+| `docs/ARCHITECTURE_COMPARISON.md` | Final comparison of building with and without LookML, with a recommendation, risks and open questions |
+| `docs/VALIDATION.md` | Test results, polish checklist, and the table for the spike's external-reporting needs |
+| `docs/DEMO.md` | How to start the dashboards for a demo and what to check |
+| `docs/METRICS.md`, `docs/SIGHTLINE_METRICS.md` | Readable metric definitions, generated from the metrics files |
+| `docs/sightline_profile.md` | Profile of the wastewater datasets |
+| `tools/smoke_test.py` | Calls every page and data endpoint of a running server (52 checks) |
+| `tools/ui_test.py` | Drives a real browser through filters and drill-downs (27 checks) |
+| `tools/profile_dataset.py` | Profiles the tables of a BigQuery dataset |
+
+Run the checks after any change to the dashboards, with the server running:
+`python tools/smoke_test.py http://127.0.0.1:8080` and `python tools/ui_test.py http://127.0.0.1:8080`
+(the second needs `pip install playwright` and `playwright install chromium`).
 
 ## Steps taken
 
@@ -120,7 +138,7 @@ That is engineering work and should be scoped separately from the definitions.
 
 Sightline data (wastewater) was used to test the process on a dataset with no LookML and no repository.
 
-- **Start with the profile.** In under an hour it showed the size of each table, the date range, the keys that
+- **Start with the profile.** A few small queries showed the size of each table, the date range, the keys that
   join the two datasets (44 of 50 sites match), and that the pathogen table is 100 GB, almost all of it one map
   column. Without the profile the first dashboard query would have scanned the whole 100 GB.
 - **Cost controls belong in the definitions.** The metrics file records "always filter by date, never select the
@@ -205,8 +223,8 @@ The Looker API options were not tried because API keys could not be obtained in 
   Fields that need `condition`, user attributes or other templating are reported as unsupported.
 
 ### 5. Data sensitivity
-- The `/` page shows a 50-row preview of patient-level rows (identifier columns hidden). Remove or
-  restrict this before sharing the app.
+- The 50-row patient preview that the tables page used to show has been removed; no page shows
+  individual rows.
 - The explorer can group by any non-hidden dimension, so small cells (for example 12 revoked) can
   appear. Review before wider sharing.
 - The app has no authentication of its own. Anyone who can open it sees data via its identity.
@@ -245,7 +263,7 @@ Ordered by value for the proof of concept.
    API options in outstanding issue 1.
 4. **Cover more of the dashboard.** The baseline survey, PROMIS, CMC and cardiometabolic sections, and the
    table calculations (e.g. `total_eligible_string`).
-5. **Remove or restrict the row preview** on `/` before the app is shared with anyone.
+5. **Compare the Lifelong tiles with Looker** and record the result in `docs/VALIDATION.md`.
 6. **Drill-down.** Click a donut slice or point to break it down by age, state or organization, using the
    same LookML measures.
 7. **Trends and alerts.** Week-over-week change, and a flag when a funnel step drops.

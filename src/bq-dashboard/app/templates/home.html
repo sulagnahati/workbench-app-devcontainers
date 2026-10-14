@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Verily dashboards</title>
+    <link rel="stylesheet" href="static/verily.css">
+    <link rel="stylesheet" href="static/dashboard.css">
+    <style>
+        .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+        .tile { display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: box-shadow .15s, transform .15s; }
+        .tile:hover { box-shadow: 0 6px 20px rgba(18,45,40,.12); transform: translateY(-2px); }
+        .tile .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--v-teal); }
+        .tile h2 { font-size: 20px; margin: 6px 0 8px; }
+        .tile p { margin: 0 0 12px; color: var(--v-slate); font-size: 14px; line-height: 1.45; }
+        .tile ul { margin: 0 0 14px; padding-left: 18px; color: var(--v-black); font-size: 13px; line-height: 1.55; }
+        .tile .go { margin-top: auto; color: var(--v-green-dark); font-weight: 700; font-size: 14px; }
+        .facts { display: grid; grid-template-columns: 160px 1fr; gap: 6px 14px; font-size: 13px; margin: 0; }
+        .facts dt { color: var(--v-slate); font-weight: 700; }
+        .facts dd { margin: 0; }
+        @media (max-width: 900px) { .cards { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+{% with page_title='Verily dashboards', page_subtitle='Proof-of-concept dashboards on Verily Workbench: one built from LookML, two built without it.', active='home' %}{% include '_header.html' %}{% endwith %}
+<div class="container">
+    <div class="cards">
+        <a class="card tile" href="overview">
+            <span class="tag">Built without LookML</span>
+            <h2>Member overview</h2>
+            <p>Who our members are, how many are active, and how sign-ups are trending.</p>
+            <ul><li>Totals, active members and active share</li><li>Sign-ups over time</li><li>Drill from organization to program, state, age and sex</li></ul>
+            <span class="go">Open dashboard &rarr;</span>
+        </a>
+        <a class="card tile" href="sightline">
+            <span class="tag">Built without LookML</span>
+            <h2>Wastewater surveillance</h2>
+            <p>Pathogen levels and SARS-CoV-2 variants from wastewater treatment plants.</p>
+            <ul><li>Variant mix by week</li><li>Pathogen trends, state and plant drill-down</li><li>Plant map</li></ul>
+            <span class="go">Open dashboard &rarr;</span>
+        </a>
+        <a class="card tile" href="lifelong">
+            <span class="tag">Built from LookML</span>
+            <h2>Lifelong funnel</h2>
+            <p>Interest and consent steps for the Lifelong study, rebuilt from the Looker dashboard's LookML.</p>
+            <ul><li>Interest and consent funnels</li><li>Same filters as the Looker dashboard</li><li>Tiles and measures read from the LookML files</li></ul>
+            <span class="go">Open dashboard &rarr;</span>
+        </a>
+    </div>
+
+    <div class="section-title">About these prototypes</div>
+    <div class="card">
+        <dl class="facts">
+            <dt>Purpose</dt><dd>Compare building a dashboard from existing LookML with building one from a metrics file when no LookML exists.</dd>
+            <dt>Look and feel</dt><dd>All three dashboards share the same design, navigation and chart library, so they can be compared on how they are built, not how they look.</dd>
+            <dt>Definitions</dt><dd>Each dashboard lists the questions it answers and the rule behind each number. Hover or expand on the page for details.</dd>
+            <dt>Privacy</dt><dd>Pages show counts and averages only, never individual records. The member overview hides groups with fewer than 11 members.</dd>
+            <dt>Status</dt><dd>Prototype. Numbers have not yet been checked against Looker or by the data owners, and the definitions marked "default" need an analyst's review.</dd>
+        </dl>
+    </div>
+</div>
+</body>
+</html>

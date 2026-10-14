@@ -3,50 +3,19 @@
 <head>
     <meta charset="utf-8">
     <title>Member Overview</title>
+    <link rel="stylesheet" href="static/verily.css">
+    <link rel="stylesheet" href="static/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
-        :root { --blue: #214c43; --green: #36786a; --ink: #1a1a1a; --muted: #666c74; --line: #dedbd2; --bg: #f1efe9; }
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--ink); }
-        .container { max-width: 1240px; margin: 0 auto; padding: 28px 24px 48px; }
-        header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.02em; }
-        header p { margin: 0; color: var(--muted); font-size: 14px; }
-        nav { margin-top: 10px; font-size: 13px; }
-        nav a { color: var(--green); text-decoration: none; margin-right: 14px; }
-        .card { background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.04); }
-        .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 16px; }
-        .kpi .label { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-        .kpi .value { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; margin-top: 6px; }
-        .kpi .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
-        .kpi:nth-child(1) .value { color: var(--blue); }
-        .kpi:nth-child(2) .value { color: var(--green); }
-        .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 34px; margin-bottom: 14px; font-size: 13px; }
-        .chip { background: #d7e491; color: #122d28; border-radius: 999px; padding: 5px 6px 5px 12px; display: inline-flex; gap: 6px; align-items: center; }
-        .chip button { border: 0; background: rgba(18,45,40,.15); color: #122d28; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
-        .linkbtn { border: 0; background: none; color: var(--blue); cursor: pointer; font-size: 13px; }
-        .hintline { color: var(--muted); }
-        .row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
-        .two { grid-template-columns: 3fr 2fr; }
-        h2 { font-size: 16px; margin: 0 0 2px; }
-        .sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-        .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
-        select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 14px; }
-        .chart { width: 100%; height: 340px; }
-        .chart.tall { height: 420px; }
-        .error { color: #b91c1c; background: #fee2e2; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
-        details { margin-top: 8px; font-size: 13px; color: var(--muted); }
-        details li { margin: 4px 0; }
-        pre { background: #122d28; color: #f1efe9; padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
-        @media (max-width: 900px) { .kpis, .two { grid-template-columns: 1fr; } }
+        .kpis { grid-template-columns: repeat(3, 1fr); margin: 20px 0 14px; }
+        .kpi:nth-child(2) .value { color: var(--v-teal); }
+        .chart.tall { height: 440px; }
+        .controls h2 { margin: 0; }
     </style>
 </head>
 <body>
+{% with page_title='Member overview', page_subtitle='Who our members are, how many are active, and how sign-ups are trending.', active='overview' %}{% include '_header.html' %}{% endwith %}
 <div class="container">
-    <header>
-        <h1 id="title">Member Overview</h1>
-        <p id="description"></p>
-        <nav><a href="./">Table dashboard</a><a href="sightline">Wastewater</a><a href="lifelong">Lifelong dashboard</a><a href="lookml">LookML explorer</a></nav>
-    </header>
 
     <div class="kpis" id="kpis"></div>
 
@@ -60,8 +29,8 @@
         </div>
     </div>
 
-    <div class="card" style="margin-bottom:16px">
-        <div class="controls">
+    <div class="card" style="margin-bottom:14px">
+        <div class="controls center">
             <h2 style="margin:0">Break down by</h2>
             <select id="dimension"></select>
             <span class="hintline" id="drillhint"></span>
@@ -241,10 +210,10 @@ async function renderTrend() {
         const months = data.rows.map(r => r.d.slice(0, 7));
         chart('trend').setOption({
             color: [BLUE, GREEN],
-            grid: { left: 8, right: 16, top: 36, bottom: 56, containLabel: true },
+            grid: { left: 8, right: 34, top: 36, bottom: 56, containLabel: true },
             legend: { top: 0, right: 0, textStyle: { color: MUTED } },
             tooltip: { trigger: 'axis', valueFormatter: v => fmt.number(v) },
-            xAxis: { type: 'category', data: months, boundaryGap: false, ...axisStyle, splitLine: { show: false } },
+            xAxis: { type: 'category', data: months, boundaryGap: false, ...axisStyle, axisLabel: { color: MUTED, hideOverlap: true }, splitLine: { show: false } },
             yAxis: { type: 'value', ...axisStyle, axisLine: { show: false } },
             dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8, borderColor: 'transparent' }],
             series: t.measures.map((m, i) => ({
@@ -274,17 +243,21 @@ async function renderBreakdown() {
         const clickable = { cursor: 'pointer' };
         const bc = chart('breakdown');
         bc.off('click');
+        const order = [...names].reverse();            // largest group at the top
+        const countOf = m => Object.fromEntries(rows.map(r => [r.d, r[m]]));
+        const labelW = names.some(n => n.length > 22) ? 170 : 110;
         bc.setOption({
             color: [BLUE, GREEN],
-            grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
+            grid: { left: 8, right: 70, top: 36, bottom: 8, containLabel: true },
             legend: { top: 0, right: 0, textStyle: { color: MUTED } },
             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => fmt.number(v) },
-            xAxis: { type: 'category', data: names, axisLabel: { color: MUTED, interval: 0, rotate: names.length > 8 ? 35 : 0, width: 90, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
-            yAxis: { type: 'value', ...axisStyle, axisLine: { show: false } },
+            xAxis: { type: 'value', ...axisStyle, axisLine: { show: false } },
+            yAxis: { type: 'category', data: order, axisLabel: { color: MUTED, width: labelW, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
             series: b.measures.map((m, i) => ({
-                name: i === 0 ? 'Total members' : 'Active members', type: 'bar', barMaxWidth: 34, ...clickable,
-                itemStyle: { borderRadius: [6, 6, 0, 0] }, emphasis: { focus: 'series' },
-                data: rows.map(r => r[m]),
+                name: i === 0 ? 'Total members' : 'Active members', type: 'bar', barMaxWidth: 16, ...clickable,
+                itemStyle: { borderRadius: [0, 6, 6, 0] }, emphasis: { focus: 'series' },
+                label: i === 0 ? { show: true, position: 'right', color: MUTED, formatter: p => fmt.number(p.value) } : { show: false },
+                data: order.map(n => countOf(m)[n] ?? 0),
             })),
         }, true);
         bc.on('click', p => drill(p.name));
@@ -298,7 +271,7 @@ async function renderBreakdown() {
             grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => fmt.percent(v) },
             xAxis: { type: 'value', max: 1, axisLabel: { color: MUTED, formatter: v => `${Math.round(v * 100)}%` }, splitLine: { lineStyle: { color: '#eeece6' } } },
-            yAxis: { type: 'category', data: reversed, axisLabel: { color: MUTED, width: 110, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
+            yAxis: { type: 'category', data: reversed, axisLabel: { color: MUTED, width: names.some(n => n.length > 22) ? 170 : 110, overflow: 'truncate' }, axisLine: { lineStyle: { color: LINE } } },
             series: [{
                 type: 'bar', barMaxWidth: 22, ...clickable, itemStyle: { borderRadius: [0, 6, 6, 0] },
                 label: { show: true, position: 'right', color: MUTED, formatter: p => fmt.percent(p.value) },
