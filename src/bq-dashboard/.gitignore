@@ -1,3 +1,6 @@
 # LookML comes from the internal analytics-internal-looker repo; do not commit it.
 app/lookml/
 docs/screenshots/
+static-prototype/dist/
+static-prototype/dist.zip
+static-prototype/.echarts.min.js

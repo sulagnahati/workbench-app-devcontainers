@@ -39,11 +39,13 @@ Target data: `prj-p-1v-s0i.gold_basevalue_lifelong.*_bv_ll` (prod). Config is in
 | `docs/SEMANTIC_LAYER_PROPOSAL.md` | **Start here.** The proposed position: where business definitions live, how external dashboards are built, the scaling plan, why analytics owns it, what Sightline showed, and what to decide |
 | `docs/ARCHITECTURE_COMPARISON.md` | Final comparison of defining dashboards with and without LookML, with a recommendation (LookML as the governed source of definitions), risks and open questions |
 | `docs/VALIDATION.md` | Test results, the polish checklist, and how the dashboards score against the five sponsor-view needs from ONEVERILY-152005 |
+| `docs/PUBLISH_PROTOTYPE.md` | How to publish the sample-data prototype to go/prototypes |
 | `docs/DEMO.md` | How to start the dashboards for a demo and what to check |
 | `docs/METRICS.md`, `docs/SIGHTLINE_METRICS.md` | Readable metric definitions, generated from the metrics files |
 | `docs/sightline_profile.md` | Profile of the wastewater datasets |
 | `tools/smoke_test.py` | Calls every page and data endpoint of a running server (52 checks) |
 | `tools/ui_test.py` | Drives a real browser through filters and drill-downs (27 checks) |
+| `tools/build_static_prototype.py`, `tools/static_ui_test.py` | Build and test a static sample-data copy of the dashboards for the prototype publisher (`docs/PUBLISH_PROTOTYPE.md`) |
 | `tools/profile_dataset.py` | Profiles the tables of a BigQuery dataset |
 
 Run the checks after any change to the dashboards, with the server running:
